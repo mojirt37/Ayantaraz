@@ -1,9 +1,6 @@
-import js from "@eslint/js";
 import nextVitals from "eslint-config-next/core-web-vitals";
-import globals from "globals";
-import tseslint from "typescript-eslint";
 
-export default tseslint.config(
+const config = [
   {
     ignores: [
       ".next/**",
@@ -13,12 +10,10 @@ export default tseslint.config(
       "test-results/**"
     ]
   },
-  js.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
   ...nextVitals,
   {
+    files: ["**/*.{ts,tsx}"],
     languageOptions: {
-      globals: { ...globals.browser, ...globals.node },
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname }
     },
     rules: {
@@ -26,4 +21,6 @@ export default tseslint.config(
       "@typescript-eslint/no-floating-promises": "error"
     }
   }
-);
+];
+
+export default config;

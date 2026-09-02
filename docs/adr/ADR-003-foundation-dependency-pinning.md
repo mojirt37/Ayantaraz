@@ -1,15 +1,15 @@
 # ADR-003: Pinned engineering-foundation dependencies
 
 - **Date:** 2026-09-02
-- **Status:** Proposed
+- **Status:** Accepted
 
 ## Context
 
-The repository started without a package manifest or lockfile. The locked requirements prescribe the production stack and prohibit unpinned critical dependencies. The environment denied registry access while resolving packages, so a verified lockfile cannot yet be generated.
+The repository started without a package lockfile. The locked requirements prescribe pinned dependencies and require reproducible installation in CI and Docker.
 
 ## Decision
 
-The foundation declares exact package versions in `package.json`. A generated `package-lock.json` is mandatory before CI or Docker can be considered verified; its absence is recorded as a blocked operational item.
+Use exact versions in `package.json` and commit the npm lockfile generated from those declarations. CI and Docker must use `npm ci`, which rejects a manifest/lockfile mismatch rather than resolving a new dependency graph.
 
 ## Alternatives rejected
 
@@ -18,4 +18,4 @@ The foundation declares exact package versions in `package.json`. A generated `p
 
 ## Consequences
 
-Local and CI installation/build verification remains blocked until approved registry access or an approved package mirror is available.
+The existing dependency graph is installable from the configured registry and is committed. Adding the required PostgreSQL driver and Drizzle ORM remains blocked because the registry returned HTTP 403 for those packages; this does not permit substituting mocks for database behavior.

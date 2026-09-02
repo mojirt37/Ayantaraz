@@ -22,7 +22,7 @@ These are implementation contracts, not inferred business policies. Runtime rese
 
 - **Authoritative read/write:** `tax_rule_versions`, `tax_calculations`.
 - **Required transaction:** select one published, effective rule version and insert the normalized input/output snapshot together.
-- **Constraint relied on:** stable rule/version foreign key, published effective index, and published-version immutability trigger.
+- **Constraint relied on:** stable rule/version foreign key, published effective index, published-version immutability trigger, and the published-state check requiring a non-blank source reference plus reviewer and review timestamp.
 - **Blocked policy:** formula selection, effective-date overlap policy, tax rounding, units, and legal sources are B-001 and must be supplied before executable calculation behavior is added.
 
 ## OTP consumption
