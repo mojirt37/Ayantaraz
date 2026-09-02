@@ -17,13 +17,14 @@ const publicEnvironmentSchema = z.object({
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;
 export type PublicEnvironment = z.infer<typeof publicEnvironmentSchema>;
+type EnvironmentSource = Readonly<Record<string, string | undefined>>;
 
-export function getPublicEnvironment(source: NodeJS.ProcessEnv = process.env): PublicEnvironment {
+export function getPublicEnvironment(source: EnvironmentSource = process.env): PublicEnvironment {
   return publicEnvironmentSchema.parse(source);
 }
 
 export function getServerEnvironment(
-  source: NodeJS.ProcessEnv = process.env
+  source: EnvironmentSource = process.env
 ): ServerEnvironment & PublicEnvironment {
   return { ...getPublicEnvironment(source), ...serverEnvironmentSchema.parse(source) };
 }

@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [work]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,10 +19,124 @@ jobs:
         with:
           node-version: 24.15.0
           cache: npm
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-      - run: npm audit --omit=dev --audit-level=high
+      - name: Run reproducible quality and build verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          {
+            echo '$ npm ci'
+            npm ci
+            echo '$ npm run format:check'
+            npm run format:check
+            echo '$ npm run lint'
+            npm run lint
+            echo '$ npm run typecheck'
+            npm run typecheck
+            echo '$ npm test'
+            npm test
+            echo '$ npm run audit:production'
+            npm run audit:production
+            echo '$ npm run build'
+            npm run build
+            echo '$ docker build --tag ayan-taraz:${{ github.sha }} .'
+            docker build --tag ayan-taraz:${{ github.sha }} .
+          } 2>&1 | tee verification/quality.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: quality-verification
+          path: verification/quality.log
+          if-no-files-found: error
+          retention-days: 7
+
+  infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.1-alpine
+        env:
+          POSTGRES_DB: ayan_taraz_test
+          POSTGRES_USER: ayan_taraz
+          POSTGRES_PASSWORD: ayan_taraz_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayan_taraz -d ayan_taraz_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8.2.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Verify PostgreSQL migration, concurrency, and Redis connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          {
+            echo '$ npm ci'
+            npm ci
+            echo '$ npm run test:db'
+            npm run test:db
+            echo '$ npm run test:redis'
+            npm run test:redis
+          } 2>&1 | tee verification/infrastructure.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: infrastructure-verification
+          path: verification/infrastructure.log
+          if-no-files-found: error
+          retention-days: 7
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Build and execute browser tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          {
+            echo '$ npm ci'
+            npm ci
+            echo '$ npm run build'
+            npm run build
+            echo '$ npx playwright install --with-deps chromium'
+            npx playwright install --with-deps chromium
+            echo '$ npm run test:e2e'
+            npm run test:e2e
+          } 2>&1 | tee verification/e2e.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: e2e-verification
+          path: verification/e2e.log
+          if-no-files-found: error
+          retention-days: 7

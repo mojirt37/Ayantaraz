@@ -2,6 +2,8 @@
 -- This migration creates only requirements-backed entities and constraints.
 -- It does not encode unresolved tax, availability, cancellation, payment-evidence, or retention policies.
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TYPE user_role AS ENUM ('USER', 'ADMIN');
 CREATE TYPE version_status AS ENUM ('DRAFT', 'REVIEW', 'APPROVED', 'PUBLISHED', 'ARCHIVED');
 CREATE TYPE appointment_status AS ENUM ('REQUESTED', 'CONFIRMED', 'COMPLETED', 'CANCELLED');

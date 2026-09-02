@@ -9,7 +9,8 @@ describe("OTP lifecycle", () => {
       {
         create: async (c) => {
           stored = c.codeHmac;
-        }
+        },
+        consumeIfValid: async () => "NOT_FOUND"
       },
       { sendOtp: async ({ code }) => expect(code).toMatch(/^\d{6}$/) },
       {
