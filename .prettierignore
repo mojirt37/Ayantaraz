@@ -1,0 +1,11 @@
+.next
+coverage
+node_modules
+package-lock.json
+AGENTS.md
+ayan-taraz-production-grade-agent-instructions-2026.md
+.dockerignore
+.env.example
+.gitignore
+.prettierignore
+Dockerfile
