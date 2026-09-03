@@ -12,6 +12,43 @@ describe("application boundaries", () => {
     );
     expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT", httpStatus: 409 } });
   });
+  it("returns the original reservation for an idempotent retry", async () => {
+    const reservation = {
+      appointmentId: "a",
+      slotId: "s",
+      userId: "u",
+      status: "REQUESTED" as const
+    };
+    await expect(
+      reserveAppointment(
+        { reserve: async () => ({ kind: "IDEMPOTENT" as const, reservation }) },
+        { userId: "u", slotId: "s", idempotencyKey: "k" }
+      )
+    ).resolves.toEqual({ ok: true, value: reservation });
+  });
+  it("does not convert infrastructure failure into an appointment or payment success", async () => {
+    await expect(
+      reserveAppointment(
+        {
+          reserve: async () => {
+            throw new Error("database unavailable");
+          }
+        },
+        { userId: "u", slotId: "s", idempotencyKey: "k" }
+      )
+    ).resolves.toMatchObject({ ok: false, error: { code: "DEPENDENCY_FAILURE", httpStatus: 503 } });
+    await expect(
+      decidePayment(
+        {
+          decide: async () => {
+            throw new Error("database unavailable");
+          }
+        },
+        { userId: "admin", role: "ADMIN" },
+        { paymentId: "p", decision: "CONFIRMED" }
+      )
+    ).resolves.toMatchObject({ ok: false, error: { code: "DEPENDENCY_FAILURE", httpStatus: 503 } });
+  });
   it("requires admin before payment mutation", async () => {
     const result = await decidePayment(
       { decide: async () => "DECIDED" },
@@ -19,6 +56,19 @@ describe("application boundaries", () => {
       { paymentId: "p", decision: "CONFIRMED" }
     );
     expect(result).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+  });
+  it("rejects an invalid payment decision before persistence", async () => {
+    let persisted = false;
+    const result = await decidePayment(
+      { decide: async () => ((persisted = true), "DECIDED" as const) },
+      { userId: "admin", role: "ADMIN" },
+      { paymentId: "p", decision: "PENDING" as never }
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "VALIDATION_ERROR", httpStatus: 422 }
+    });
+    expect(persisted).toBe(false);
   });
   it("never fabricates a Q&A answer or tax rule", async () => {
     expect(
@@ -28,6 +78,21 @@ describe("application boundaries", () => {
       await prepareCalculation(
         { findPublishedRule: async () => null, persistCalculation: async () => undefined },
         { taxType: "unknown", effectiveDate: "2026-01-01" }
+      )
+    ).toEqual({ kind: "NO_PUBLISHED_RULE" });
+    expect(
+      await prepareCalculation(
+        {
+          findPublishedRule: async () => ({
+            ruleVersionId: "rule-1",
+            engineVersion: "engine-1",
+            effectiveFrom: "2026-01-01",
+            effectiveTo: "2026-12-31",
+            sourceReference: "approved-source"
+          }),
+          persistCalculation: async () => undefined
+        },
+        { taxType: "income", effectiveDate: "2027-01-01" }
       )
     ).toEqual({ kind: "NO_PUBLISHED_RULE" });
   });
