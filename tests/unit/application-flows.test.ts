@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { reserveAppointment } from "../../src/modules/appointment/application/reserve-appointment";
-import { startTaxQuestion } from "../../src/modules/knowledge/application/resolve-tax-question";
+import {
+  answerTaxClarification,
+  startTaxQuestion
+} from "../../src/modules/knowledge/application/resolve-tax-question";
 import { decidePayment } from "../../src/modules/payment/application/decide-payment";
 import { prepareCalculation } from "../../src/modules/tax/application/prepare-calculation";
 
@@ -94,6 +97,55 @@ describe("application boundaries", () => {
         },
         { taxType: "income", effectiveDate: "2027-01-01" }
       )
-    ).toEqual({ kind: "NO_PUBLISHED_RULE" });
+    ).toEqual({ kind: "OUT_OF_EFFECTIVE_RANGE" });
+  });
+  it("rejects an impossible effective date before querying a rule", async () => {
+    let queried = false;
+    await expect(
+      prepareCalculation(
+        {
+          findPublishedRule: async () => {
+            queried = true;
+            return null;
+          },
+          persistCalculation: async () => undefined
+        },
+        { taxType: "income", effectiveDate: "2026-02-30" }
+      )
+    ).resolves.toEqual({ kind: "INVALID_INPUT" });
+    expect(queried).toBe(false);
+  });
+  it("does not query a tax knowledge adapter for an empty clarification selection", async () => {
+    let queried = false;
+    await expect(
+      answerTaxClarification(
+        {
+          getInitialNode: async () => null,
+          select: async () => {
+            queried = true;
+            return null;
+          }
+        },
+        { nodeId: "  ", optionId: "\u200f" }
+      )
+    ).resolves.toEqual({ kind: "NO_APPROVED_ANSWER" });
+    expect(queried).toBe(false);
+  });
+  it("reports malformed published rule metadata instead of selecting it", async () => {
+    await expect(
+      prepareCalculation(
+        {
+          findPublishedRule: async () => ({
+            ruleVersionId: "r",
+            engineVersion: "",
+            sourceReference: "source",
+            effectiveFrom: "2026-01-01",
+            effectiveTo: null
+          }),
+          persistCalculation: async () => undefined
+        },
+        { taxType: "income", effectiveDate: "2026-01-01" }
+      )
+    ).resolves.toEqual({ kind: "MALFORMED_RULE" });
   });
 });

@@ -71,4 +71,37 @@ describe("Redis OTP rate limiter adapter", () => {
       limiter.acquire({ phoneE164: "+989121234567", clientIp: "192.0.2.1", now: new Date() })
     ).rejects.toThrow("Redis command failed.");
   });
+
+  it("times out rather than allowing an OTP request when Redis does not respond", async () => {
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Test server did not expose a TCP port.");
+
+    const limiter = new RedisOtpRequestRateLimiter(
+      new RedisCommandClient(`redis://127.0.0.1:${address.port}`, 20),
+      keySecret,
+      { windowSeconds: 60, phoneLimit: 3, ipLimit: 8 }
+    );
+    await expect(
+      limiter.acquire({ phoneE164: "+989121234567", clientIp: "192.0.2.1", now: new Date() })
+    ).rejects.toThrow("Redis command timed out.");
+  });
+
+  it("rejects malformed or credential-bearing Redis URLs instead of making an unsafe request", async () => {
+    const invalidScheme = new RedisCommandClient("http://127.0.0.1:6379");
+    await expect(invalidScheme.eval("return 1", [], [])).rejects.toThrow(
+      "Redis URL must use redis:// or rediss://."
+    );
+
+    const credentialUrl = new RedisCommandClient("redis://secret@127.0.0.1:6379");
+    await expect(credentialUrl.eval("return 1", [], [])).rejects.toThrow(
+      "Redis URL credentials are not supported by this client."
+    );
+  });
 });

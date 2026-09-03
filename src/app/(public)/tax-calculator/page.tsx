@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { LandingPage } from "@/components/public/site-shell";
+import { AvailabilityNotice, LandingPage } from "@/components/public/site-shell";
 
 export const metadata = { title: "محاسبه‌گر مالیاتی" };
 
@@ -14,6 +14,10 @@ export default function TaxCalculatorLandingPage() {
       <Link className="button" href="/login">
         ورود برای شروع
       </Link>
+      <AvailabilityNotice title="قانون قابل محاسبه هنوز منتشر نشده است">
+        تا زمان انتشار قانونِ بررسی‌شده، تاریخ مؤثر، واحد و شیوه گرد کردن، هیچ عددی محاسبه یا نمایش
+        داده نمی‌شود. پس از ورود، فقط نتیجه ثبت‌شده از قانون منتشرشده قابل مشاهده خواهد بود.
+      </AvailabilityNotice>
     </LandingPage>
   );
 }
