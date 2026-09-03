@@ -1,8 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { generateOtp, verifyOtp } from "../../src/modules/identity/domain/otp";
 
-const secret = "a-32-character-minimum-hmac-secret!";
+const secret = randomBytes(32).toString("hex");
 const challengeId = "f2cb32fa-1738-47bd-a8af-d218b0138a86";
 const phone = "+989121234567";
 

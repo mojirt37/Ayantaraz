@@ -59,7 +59,9 @@ jobs:
         env:
           POSTGRES_DB: ayan_taraz_test
           POSTGRES_USER: ayan_taraz
-          POSTGRES_PASSWORD: ayan_taraz_test_password
+          # CI uses an isolated, ephemeral database service. Production credentials
+          # are always injected by the deployment environment.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
