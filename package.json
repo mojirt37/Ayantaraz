@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "test:db": "bash scripts/verify-postgres-foundation.sh",
     "test:redis": "bash scripts/verify-redis.sh",
+    "evidence:release": "bash scripts/create-release-evidence.sh",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "audit:production": "npm audit --omit=dev --audit-level=high"
