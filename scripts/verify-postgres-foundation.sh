@@ -4,13 +4,12 @@ set -euo pipefail
 : "${PGHOST:=127.0.0.1}"
 : "${PGPORT:=5432}"
 : "${PGUSER:=ayan_taraz}"
-: "${PGPASSWORD:=ayan_taraz_test_password}"
 : "${PGDATABASE:=ayan_taraz_test}"
 : "${POSTGRES_CLIENT_IMAGE:=postgres:18.1-alpine}"
 
 psql() {
   docker run --rm --network host -i \
-    -e PGPASSWORD="$PGPASSWORD" \
+    ${PGPASSWORD:+-e PGPASSWORD="$PGPASSWORD"} \
     "$POSTGRES_CLIENT_IMAGE" \
     psql --set=ON_ERROR_STOP=1 --no-psqlrc --tuples-only \
       --host "$PGHOST" --port "$PGPORT" --username "$PGUSER" --dbname "$PGDATABASE" "$@"

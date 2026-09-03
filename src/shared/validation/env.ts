@@ -3,9 +3,24 @@ import "server-only";
 import { z } from "zod";
 
 const serverEnvironmentSchema = z.object({
-  DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url(),
-  OTP_HMAC_SECRET: z.string().min(32)
+  DATABASE_URL: z
+    .string()
+    .url()
+    .refine(
+      (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
+      "must be a PostgreSQL URL"
+    ),
+  REDIS_URL: z
+    .string()
+    .url()
+    .refine(
+      (value) => value.startsWith("redis://") || value.startsWith("rediss://"),
+      "must be a Redis URL"
+    ),
+  OTP_HMAC_SECRET: z.string().min(32),
+  SESSION_HMAC_SECRET: z.string().min(32),
+  SMS_PROVIDER: z.string().trim().min(1),
+  SMS_TEMPLATE_ID: z.string().trim().min(1)
 });
 
 const publicEnvironmentSchema = z.object({

@@ -1,7 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { consumeOtp, requestOtp } from "../../src/modules/identity/application/otp-lifecycle";
 
 const policy = { expiresInSeconds: 120, maximumAttempts: 5 };
+const hmacSecret = randomBytes(32).toString("hex");
 describe("OTP lifecycle", () => {
   it("persists only an HMAC before immediate SMS delivery", async () => {
     let stored = "";
@@ -17,7 +19,7 @@ describe("OTP lifecycle", () => {
       {
         phoneE164: "+989121234567",
         clientIp: "192.0.2.1",
-        hmacSecret: "a-32-character-minimum-hmac-secret!",
+        hmacSecret,
         policy,
         now: new Date()
       },
@@ -37,7 +39,7 @@ describe("OTP lifecycle", () => {
         challengeId: "c",
         phoneE164: "+989121234567",
         code: "123456",
-        hmacSecret: "a-32-character-minimum-hmac-secret!",
+        hmacSecret,
         policy,
         now: new Date()
       }
@@ -55,7 +57,7 @@ describe("OTP lifecycle", () => {
       challengeId: "challenge-1",
       phoneE164: "+989121234567",
       code: "123456",
-      hmacSecret: "a-32-character-minimum-hmac-secret!",
+      hmacSecret,
       policy,
       now: new Date()
     };
@@ -74,7 +76,7 @@ describe("OTP lifecycle", () => {
         {
           phoneE164: "+989121234567",
           clientIp: "not-an-ip",
-          hmacSecret: "a-32-character-minimum-hmac-secret!",
+          hmacSecret,
           policy,
           now: new Date()
         },
@@ -88,7 +90,7 @@ describe("OTP lifecycle", () => {
         {
           phoneE164: "+989121234567",
           clientIp: "192.0.2.1",
-          hmacSecret: "a-32-character-minimum-hmac-secret!",
+          hmacSecret,
           policy,
           now: new Date()
         },
@@ -102,7 +104,7 @@ describe("OTP lifecycle", () => {
     const input = {
       phoneE164: "+989121234567",
       clientIp: "192.0.2.1",
-      hmacSecret: "a-32-character-minimum-hmac-secret!",
+      hmacSecret,
       policy,
       now: new Date()
     };
