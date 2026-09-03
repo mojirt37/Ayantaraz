@@ -27,7 +27,16 @@ export async function reserveAppointment(
   store: AppointmentReservationStore,
   command: ReservationCommand
 ): Promise<Result<Reservation>> {
-  const result = await store.reserve(command);
+  let result: Awaited<ReturnType<AppointmentReservationStore["reserve"]>>;
+  try {
+    result = await store.reserve(command);
+  } catch {
+    return failure(
+      "DEPENDENCY_FAILURE",
+      "Appointment reservation is temporarily unavailable.",
+      503
+    );
+  }
   if (result.kind === "SLOT_CONFLICT") {
     return failure(
       "CONFLICT",
