@@ -3,6 +3,7 @@ import type {
   ClarificationNode,
   TaxKnowledgeStore
 } from "./decision-tree-contract";
+import { normalizePersianText } from "../../tax/domain/normalization/persian";
 
 export type TaxQuestionResolution =
   | Readonly<{ kind: "CLARIFICATION"; node: ClarificationNode }>
@@ -18,7 +19,10 @@ export async function answerTaxClarification(
   store: TaxKnowledgeStore,
   input: { nodeId: string; optionId: string }
 ): Promise<TaxQuestionResolution> {
-  const selected = await store.select(input);
+  const nodeId = normalizePersianText(input.nodeId);
+  const optionId = normalizePersianText(input.optionId);
+  if (nodeId.length === 0 || optionId.length === 0) return { kind: "NO_APPROVED_ANSWER" };
+  const selected = await store.select({ nodeId, optionId });
   if (selected === null) return { kind: "NO_APPROVED_ANSWER" };
   return "content" in selected
     ? { kind: "ANSWER", answer: selected }

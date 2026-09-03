@@ -20,3 +20,13 @@ test("keeps private dashboard unavailable without an authenticated server sessio
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "ورود با شماره همراه" })).toBeVisible();
 });
+
+test("explains unavailable tax rules without presenting a calculation result", async ({
+  request
+}) => {
+  const response = await request.get("/tax-calculator");
+  expect(response.ok()).toBe(true);
+  const body = await response.text();
+  expect(body).toContain("قانون قابل محاسبه هنوز منتشر نشده است");
+  expect(body).toContain("هیچ عددی محاسبه یا نمایش داده نمی‌شود");
+});
