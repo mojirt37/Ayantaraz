@@ -93,15 +93,55 @@ describe("Redis OTP rate limiter adapter", () => {
     ).rejects.toThrow("Redis command timed out.");
   });
 
-  it("rejects malformed or credential-bearing Redis URLs instead of making an unsafe request", async () => {
+  it("authenticates and selects the configured database before evaluating the rate-limit script", async () => {
+    const requests: string[] = [];
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+      socket.on("data", (data) => {
+        requests.push(data.toString("utf8"));
+        socket.write(requests.length < 3 ? "+OK\r\n" : ":1\r\n");
+      });
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Test server did not expose a TCP port.");
+
+    const client = new RedisCommandClient(
+      `redis://rate-user:rate%2Dsecret@127.0.0.1:${address.port}/3`
+    );
+    await expect(client.eval("return 1", [], [])).resolves.toBe(1);
+    expect(requests).toEqual([
+      expect.stringContaining("AUTH"),
+      expect.stringContaining("SELECT"),
+      expect.stringContaining("EVAL")
+    ]);
+    expect(requests[0]).toContain("rate-user");
+    expect(requests[0]).toContain("rate-secret");
+    expect(requests[1]).toContain("\r\n3\r\n");
+  });
+
+  it("rejects malformed Redis URLs instead of making an unsafe request", async () => {
     const invalidScheme = new RedisCommandClient("http://127.0.0.1:6379");
     await expect(invalidScheme.eval("return 1", [], [])).rejects.toThrow(
       "Redis URL must use redis:// or rediss://."
     );
 
-    const credentialUrl = new RedisCommandClient("redis://secret@127.0.0.1:6379");
-    await expect(credentialUrl.eval("return 1", [], [])).rejects.toThrow(
-      "Redis URL credentials are not supported by this client."
+    const usernameWithoutPassword = new RedisCommandClient("redis://rate-user@127.0.0.1:6379");
+    await expect(usernameWithoutPassword.eval("return 1", [], [])).rejects.toThrow(
+      "Redis URL username requires a password."
+    );
+
+    const nonNumericDatabase = new RedisCommandClient("redis://127.0.0.1:6379/otp");
+    await expect(nonNumericDatabase.eval("return 1", [], [])).rejects.toThrow(
+      "Redis URL must include a numeric database path."
+    );
+
+    const query = new RedisCommandClient("redis://127.0.0.1:6379/0?role=otp");
+    await expect(query.eval("return 1", [], [])).rejects.toThrow(
+      "Redis URL must not include query or fragment data."
     );
   });
 });

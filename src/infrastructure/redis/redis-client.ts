@@ -9,6 +9,9 @@ type RedisEndpoint = Readonly<{
   secure: boolean;
   host: string;
   port: number;
+  username: string | null;
+  password: string | null;
+  database: number;
 }>;
 
 function encodeCommand(parts: readonly string[]): string {
@@ -45,6 +48,7 @@ export class RedisCommandClient {
     return new Promise<string>((resolve, reject) => {
       let response = "";
       let timeout: NodeJS.Timeout | undefined;
+      let queuedCommands: readonly (readonly string[])[] = [];
       const finish = (error?: Error, value?: string) => {
         if (timeout) clearTimeout(timeout);
         socket.removeAllListeners();
@@ -53,27 +57,52 @@ export class RedisCommandClient {
         else resolve(value ?? "");
       };
 
+      const sendNextCommand = () => {
+        const command = queuedCommands[0];
+        if (!command) return finish(undefined, "");
+        queuedCommands = queuedCommands.slice(1);
+        socket.write(encodeCommand(command));
+      };
+
       socket.once("error", (error) => finish(error));
       socket.on("data", (chunk: Buffer) => {
         response += chunk.toString("utf8");
-        const end = response.indexOf("\r\n");
-        if (end < 0) return;
-        if (response.startsWith("-")) return finish(new Error("Redis command failed."));
-        if (response.startsWith(":")) return finish(undefined, response.slice(1, end));
-        finish(new Error("Redis returned an unsupported response."));
+        while (true) {
+          const end = response.indexOf("\r\n");
+          if (end < 0) return;
+          const reply = response.slice(0, end);
+          response = response.slice(end + 2);
+          if (reply.startsWith("-")) return finish(new Error("Redis command failed."));
+          if (queuedCommands.length > 0) {
+            if (!reply.startsWith("+OK")) return finish(new Error("Redis authentication failed."));
+            sendNextCommand();
+            continue;
+          }
+          if (reply.startsWith(":")) return finish(undefined, reply.slice(1));
+          return finish(new Error("Redis returned an unsupported response."));
+        }
       });
       timeout = setTimeout(() => finish(new Error("Redis command timed out.")), this.timeoutMs);
-      socket.once(endpoint.secure ? "secureConnect" : "connect", () =>
-        socket.write(encodeCommand(parts))
-      );
+      socket.once(endpoint.secure ? "secureConnect" : "connect", () => {
+        const setupCommands: (readonly string[])[] = [];
+        if (endpoint.password !== null) {
+          setupCommands.push(
+            endpoint.username === null
+              ? ["AUTH", endpoint.password]
+              : ["AUTH", endpoint.username, endpoint.password]
+          );
+        }
+        if (endpoint.database !== 0) setupCommands.push(["SELECT", String(endpoint.database)]);
+        queuedCommands = [...setupCommands, parts];
+        sendNextCommand();
+      });
     });
   }
 
   /**
-   * This deliberately refuses credentials instead of silently dropping them.
-   * The current minimal client only supports the EVAL command; accepting a
-   * credential-bearing URL without issuing AUTH would create an unsafe and
-   * misleading production configuration path.
+   * Redis credentials and a database index are applied before EVAL. This is
+   * deliberately explicit: accepting either URL field without issuing AUTH or
+   * SELECT would silently use the wrong security or data boundary.
    */
   private parseEndpoint(): RedisEndpoint {
     const parsed = new URL(this.url);
@@ -81,14 +110,35 @@ export class RedisCommandClient {
       throw new Error("Redis URL must use redis:// or rediss://.");
     }
     if (!parsed.hostname) throw new Error("Redis URL must include a host.");
-    if (parsed.username || parsed.password) {
-      throw new Error("Redis URL credentials are not supported by this client.");
-    }
 
     const port = Number(parsed.port || (parsed.protocol === "rediss:" ? 6380 : 6379));
     if (!Number.isInteger(port) || port < 1 || port > 65_535) {
       throw new Error("Redis URL must include a valid port.");
     }
-    return { secure: parsed.protocol === "rediss:", host: parsed.hostname, port };
+    const databasePath =
+      !parsed.pathname || parsed.pathname === "/" ? "0" : parsed.pathname.slice(1);
+    if (!/^\d+$/.test(databasePath)) {
+      throw new Error("Redis URL must include a numeric database path.");
+    }
+    const database = Number(databasePath);
+    if (!Number.isSafeInteger(database) || database < 0) {
+      throw new Error("Redis URL must include a valid database path.");
+    }
+    if (parsed.search || parsed.hash)
+      throw new Error("Redis URL must not include query or fragment data.");
+
+    const username = parsed.username ? decodeURIComponent(parsed.username) : null;
+    const password = parsed.password ? decodeURIComponent(parsed.password) : null;
+    if (username !== null && password === null) {
+      throw new Error("Redis URL username requires a password.");
+    }
+    return {
+      secure: parsed.protocol === "rediss:",
+      host: parsed.hostname,
+      port,
+      username,
+      password,
+      database
+    };
   }
 }

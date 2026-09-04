@@ -18,6 +18,13 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  generateBuildId: async () => {
+    const buildId = process.env.BUILD_ID;
+    if (!buildId || !/^[A-Za-z0-9._-]{7,128}$/.test(buildId)) {
+      throw new Error("BUILD_ID must be a 7-128 character source revision identifier.");
+    }
+    return buildId;
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   }
