@@ -11,7 +11,9 @@ export default defineConfig({
     trace: "on-first-retry"
   },
   webServer: {
-    command: "HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js",
+    // Keep `npm run test:e2e` runnable from a clean checkout. The standalone
+    // server is a build artifact and must never be assumed to be present.
+    command: "npm run build && HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js",
     url: "http://127.0.0.1:3000/api/health",
     reuseExistingServer: !process.env.CI,
     env: {
