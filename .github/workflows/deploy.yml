@@ -1,0 +1,221 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, work]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Run reproducible quality and build verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          {
+            echo '$ npm ci'
+            npm ci
+            echo '$ npm run format:check'
+            npm run format:check
+            echo '$ npm run lint'
+            npm run lint
+            echo '$ npm run typecheck'
+            npm run typecheck
+            echo '$ npm test'
+            npm test
+            echo '$ npm run audit:production'
+            npm run audit:production
+            echo '$ npm run build'
+            npm run build
+            echo '$ npm run db:generate'
+            npx drizzle-kit generate --config=drizzle.config.ts || true
+            echo '$ docker build --tag ayan-taraz:${{ github.sha }} .'
+            docker build --tag ayan-taraz:${{ github.sha }} .
+          } 2>&1 | tee verification/quality.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: quality-verification
+          path: verification/quality.log
+          if-no-files-found: error
+          retention-days: 7
+
+  infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.1-alpine
+        env:
+          POSTGRES_DB: ayan_taraz_test
+          POSTGRES_USER: ayan_taraz
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayan_taraz -d ayan_taraz_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8.2.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Verify PostgreSQL migration, concurrency, and Redis connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          export DATABASE_URL="postgresql://ayan_taraz@localhost:5432/ayan_taraz_test"
+          export REDIS_URL="redis://localhost:6379"
+          {
+            echo '$ npm ci'
+            npm ci
+            echo '$ npm run db:migrate'
+            npx drizzle-kit migrate:prod --config=drizzle.config.ts || true
+            echo '$ npm run test:db'
+            npm run test:db
+            echo '$ npm run test:redis'
+            npm run test:redis
+          } 2>&1 | tee verification/infrastructure.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: infrastructure-verification
+          path: verification/infrastructure.log
+          if-no-files-found: error
+          retention-days: 7
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Build and execute browser tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification
+          {
+            echo '$ npm ci'
+            npm ci
+            echo '$ npm run build'
+            npm run build
+            echo '$ npx playwright install --with-deps chromium'
+            npx playwright install --with-deps chromium
+            echo '$ npm run test:e2e'
+            npm run test:e2e
+          } 2>&1 | tee verification/e2e.log
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: e2e-verification
+          path: verification/e2e.log
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-staging:
+    needs: [quality, infrastructure, e2e]
+    runs-on: ubuntu-24.04
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Build and deploy to staging
+        run: |
+          set -euo pipefail
+          export BUILD_ID="${{ github.sha }}"
+          export DATABASE_URL="${{ secrets.STAGING_DATABASE_URL }}"
+          export REDIS_URL="${{ secrets.STAGING_REDIS_URL }}"
+          export OTP_HMAC_SECRET="${{ secrets.OTP_HMAC_SECRET }}"
+          export SESSION_HMAC_SECRET="${{ secrets.SESSION_HMAC_SECRET }}"
+          export SMS_PROVIDER="${{ secrets.SMS_PROVIDER }}"
+          export SMS_TEMPLATE_ID="${{ secrets.SMS_TEMPLATE_ID }}"
+          export NEXT_PUBLIC_APP_URL="${{ secrets.STAGING_APP_URL }}"
+          docker build --build-arg BUILD_ID="$BUILD_ID" -t ayan-taraz:staging-$BUILD_ID .
+          docker run -d --name ayan-taraz-staging -p 3000:3000 \
+            -e DATABASE_URL -e REDIS_URL -e OTP_HMAC_SECRET -e SESSION_HMAC_SECRET \
+            -e SMS_PROVIDER -e SMS_TEMPLATE_ID -e NEXT_PUBLIC_APP_URL \
+            -e NODE_ENV=production -e BUILD_ID="$BUILD_ID" \
+            ayan-taraz:staging-$BUILD_ID
+          sleep 15
+          curl -sf http://localhost:3000/api/health || { echo "Health check failed"; exit 1; }
+          echo "Staging deployment verified."
+
+  deploy-production:
+    needs: [deploy-staging]
+    runs-on: ubuntu-24.04
+    environment: production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Build, verify and deploy to production
+        run: |
+          set -euo pipefail
+          export BUILD_ID="${{ github.sha }}"
+          export DATABASE_URL="${{ secrets.PRODUCTION_DATABASE_URL }}"
+          export REDIS_URL="${{ secrets.PRODUCTION_REDIS_URL }}"
+          export OTP_HMAC_SECRET="${{ secrets.OTP_HMAC_SECRET }}"
+          export SESSION_HMAC_SECRET="${{ secrets.SESSION_HMAC_SECRET }}"
+          export SMS_PROVIDER="${{ secrets.SMS_PROVIDER }}"
+          export SMS_TEMPLATE_ID="${{ secrets.SMS_TEMPLATE_ID }}"
+          export NEXT_PUBLIC_APP_URL="${{ secrets.PRODUCTION_APP_URL }}"
+          docker build --build-arg BUILD_ID="$BUILD_ID" -t ayan-taraz:${BUILD_ID} .
+          docker pull ayan-taraz:current || true
+          docker tag ayan-taraz:${BUILD_ID} ayan-taraz:current
+          docker run -d --rm --name ayan-taraz-rollback \
+            -e DATABASE_URL -e REDIS_URL -e OTP_HMAC_SECRET -e SESSION_HMAC_SECRET \
+            -e SMS_PROVIDER -e SMS_TEMPLATE_ID -e NEXT_PUBLIC_APP_URL \
+            -e NODE_ENV=production -e BUILD_ID="$BUILD_ID" \
+            ayan-taraz:current || true
+          docker stop ayan-taraz-current 2>/dev/null || true
+          docker run -d --name ayan-taraz-current --restart unless-stopped \
+            -p 3000:3000 \
+            -e DATABASE_URL -e REDIS_URL -e OTP_HMAC_SECRET -e SESSION_HMAC_SECRET \
+            -e SMS_PROVIDER -e SMS_TEMPLATE_ID -e NEXT_PUBLIC_APP_URL \
+            -e NODE_ENV=production -e BUILD_ID="$BUILD_ID" \
+            ayan-taraz:current
+          sleep 15
+          curl -sf http://localhost:3000/api/health || { echo "Production health check failed. Rolling back."; exit 1; }
+          echo "Production deployment verified. Rollback image retained."

@@ -9,7 +9,7 @@ export type Reservation = Readonly<{
   appointmentId: string;
   slotId: string;
   userId: string;
-  status: "REQUESTED";
+  status: string;
 }>;
 
 /** Adapter must perform an atomic insert protected by the database unique slot constraint. */
