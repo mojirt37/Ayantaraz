@@ -1,85 +1,135 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/infrastructure/db/client";
-import { eq } from "drizzle-orm";
-import * as S from "@/infrastructure/db/schema";
-import { headers } from "next/headers";
-import { success, failure, type Result } from "@/shared/errors/result";
+import { cookies } from "next/headers";
+import { z } from "zod";
 import { generateOtp, hmacOtp } from "@/shared/hash";
 import { PostgresOtpStore } from "@/infrastructure/db/repositories/otp-repository";
 import { createRedisClient, RedisRateLimiter } from "@/infrastructure/redis/ioredis-client";
 import { completeOtpVerification } from "@/modules/identity/application/complete-otp-verification";
+import { sessionCookieOptions } from "@/modules/identity/application/session-contract";
+import { SmsDeliveryError, SmsNotConfiguredError, sendOtpSms } from "@/infrastructure/sms/sms-sender";
 
 let redisClient: ReturnType<typeof createRedisClient> | null = null;
 function getRedis() {
-  if (!redisClient && process.env.REDIS_URL) {
-    redisClient = createRedisClient(process.env.REDIS_URL);
+  if (!redisClient && process.env["REDIS_URL"]) {
+    redisClient = createRedisClient(process.env["REDIS_URL"]);
   }
   return redisClient;
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  const body = await request.json().catch(() => ({}));
-  const action = body.action;
+function requiredSecret(name: "OTP_HMAC_SECRET" | "SESSION_HMAC_SECRET"): string | null {
+  const value = process.env[name];
+  return value && value.length >= 32 ? value : null;
+}
 
-  if (action === "request-otp") {
-    return handleRequestOtp(body);
+const requestSchema = z.object({
+  action: z.literal("request-otp"),
+  phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, "invalid phone"),
+  ip: z.string().max(64).optional(),
+});
+
+const verifySchema = z.object({
+  action: z.literal("verify-otp"),
+  challengeId: z.string().uuid(),
+  phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, "invalid phone"),
+  code: z.string().regex(/^\d{6}$/, "invalid code"),
+});
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const body = await request.json().catch(() => null);
+  if (body === null || typeof body !== "object") {
+    return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
-  if (action === "verify-otp") {
-    return handleVerifyOtp(body);
-  }
+  const action = (body as { action?: unknown }).action;
+  if (action === "request-otp") return handleRequestOtp(body);
+  if (action === "verify-otp") return handleVerifyOtp(body);
   return NextResponse.json({ error: "unknown action" }, { status: 400 });
 }
 
-async function handleRequestOtp(body: { phone: string; ip: string }) {
-  const phone = body.phone;
-  if (!/^\+[1-9][0-9]{7,14}$/.test(phone)) {
-    return NextResponse.json({ error: "invalid phone" }, { status: 422 });
-  }
+async function handleRequestOtp(raw: unknown) {
+  const parsed = requestSchema.safeParse(raw);
+  if (!parsed.success) return NextResponse.json({ error: "invalid phone" }, { status: 422 });
+  const { phone, ip } = parsed.data;
+
   const redis = getRedis();
-  const rateLimiter = redis ? new RedisRateLimiter(redis) : null;
-  if (rateLimiter) {
-    const allowed = await rateLimiter.acquire(`otp:${phone}:${body.ip ?? "unknown"}`);
-    if (allowed === "RATE_LIMITED") return NextResponse.json({ error: "rate limited" }, { status: 429 });
+  if (redis) {
+    const allowed = await new RedisRateLimiter(redis).acquire(`otp:${phone}:${ip ?? "unknown"}`);
+    if (allowed === "RATE_LIMITED") return NextResponse.json({ error: "too many requests, try again later" }, { status: 429 });
   }
-  const hmacSecretEarly = process.env.OTP_HMAC_SECRET;
-  if (!hmacSecretEarly || hmacSecretEarly.length < 32) return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
+  const hmacSecret = requiredSecret("OTP_HMAC_SECRET");
+  if (!hmacSecret) return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
+
   const otp = generateOtp();
   const challengeId = crypto.randomUUID();
-  const hmacSecret = process.env.OTP_HMAC_SECRET ?? "";
   const codeHmac = hmacOtp(challengeId, phone, otp, hmacSecret);
 
   const store = new PostgresOtpStore(hmacSecret);
+  const now = new Date();
   await store.create({
     id: challengeId,
     phoneE164: phone,
     codeHmac,
     attempts: 0,
-    expiresAt: new Date(Date.now() + 300000),
+    expiresAt: new Date(now.getTime() + 300000),
   });
 
-  // OTP code is never logged. Delivery happens via the configured SMS provider.
+  // OTP code is never logged and never returned. Delivery via configured SMS provider only.
+  try {
+    await sendOtpSms({ phoneE164: phone, code: otp, templateId: process.env["SMS_TEMPLATE_ID"] ?? "otp" });
+  } catch (error) {
+    await store.invalidate(challengeId, new Date());
+    if (error instanceof SmsNotConfiguredError) {
+      return NextResponse.json({ error: "sms provider is not configured" }, { status: 503 });
+    }
+    if (error instanceof SmsDeliveryError) {
+      return NextResponse.json({ error: "failed to deliver verification code" }, { status: 503 });
+    }
+    return NextResponse.json({ error: "failed to deliver verification code" }, { status: 503 });
+  }
   return NextResponse.json({ challengeId, status: "sent" });
 }
 
-async function handleVerifyOtp(body: { challengeId: string; phone: string; code: string }) {
-  const hmacSecret = process.env.OTP_HMAC_SECRET;
-  const sessionHmacSecret = process.env.SESSION_HMAC_SECRET;
-  if (!hmacSecret || hmacSecret.length < 32 || !sessionHmacSecret || sessionHmacSecret.length < 32) {
+async function handleVerifyOtp(raw: unknown) {
+  const parsed = verifySchema.safeParse(raw);
+  if (!parsed.success) return NextResponse.json({ error: "invalid verification payload" }, { status: 422 });
+  const { challengeId, phone, code } = parsed.data;
+
+  const redis = getRedis();
+  if (redis) {
+    const allowed = await new RedisRateLimiter(redis).acquire(`otp-verify:${phone}`);
+    if (allowed === "RATE_LIMITED") return NextResponse.json({ error: "too many attempts, try again later" }, { status: 429 });
+  }
+  const hmacSecret = requiredSecret("OTP_HMAC_SECRET");
+  const sessionHmacSecret = requiredSecret("SESSION_HMAC_SECRET");
+  if (!hmacSecret || !sessionHmacSecret) {
     return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
   }
   const store = new PostgresOtpStore(hmacSecret);
+  const now = new Date();
   const result = await completeOtpVerification(store, {
-    challengeId: body.challengeId,
-    phoneE164: body.phone,
-    code: body.code,
+    challengeId,
+    phoneE164: phone,
+    code,
     otpHmacSecret: hmacSecret,
     sessionHmacSecret,
     maximumAttempts: 5,
-    now: new Date(),
-    sessionExpiresAt: new Date(Date.now() + 86400000),
+    now,
+    sessionExpiresAt: new Date(now.getTime() + 86400000),
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error.message }, { status: result.error.httpStatus });
   }
-  return NextResponse.json({ sessionToken: result.value.sessionToken, status: "authenticated" });
+  // Persist login in an HttpOnly session cookie so it survives reloads.
+  const jar = await cookies();
+  const cookieOptions = sessionCookieOptions({
+    expiresAt: result.value.session.expiresAt,
+    isProduction: process.env["NODE_ENV"] === "production",
+  });
+  jar.set("session", result.value.sessionToken, {
+    httpOnly: cookieOptions.httpOnly,
+    secure: cookieOptions.secure,
+    sameSite: cookieOptions.sameSite,
+    path: cookieOptions.path,
+    expires: cookieOptions.expires,
+  });
+  return NextResponse.json({ status: "authenticated" });
 }

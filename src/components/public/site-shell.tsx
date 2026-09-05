@@ -12,7 +12,8 @@ const navigation = [
 const productNavigation = [
   ["پرسش مالیاتی", "/tax-qa"],
   ["محاسبه‌گر", "/tax-calculator"],
-  ["مشاوره", "/consultation"]
+  ["مشاوره", "/consultation"],
+  ["مدیریت", "/admin"]
 ] as const;
 
 export function SiteShell({ children }: Readonly<{ children: ReactNode }>) {

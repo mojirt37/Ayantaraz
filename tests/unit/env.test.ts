@@ -9,7 +9,8 @@ const validEnvironment = {
   REDIS_URL: "redis://redis.example:6379",
   OTP_HMAC_SECRET: randomBytes(32).toString("hex"),
   SESSION_HMAC_SECRET: randomBytes(32).toString("hex"),
-  SMS_PROVIDER: "owner-approved-provider",
+  SMS_PROVIDER_URL: "https://sms.example/send",
+  SMS_API_KEY: "test-api-key",
   SMS_TEMPLATE_ID: "otp-template"
 };
 

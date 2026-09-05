@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { SiteShell } from "@/components/public/site-shell";
+import { HomeSlider } from "@/components/public/home-slider";
+import { getActiveHomepageSlides } from "@/modules/content/application/get-homepage-slides";
 
 const services = [
   {
@@ -23,10 +25,17 @@ const services = [
   },
 ] as const;
 
-export default function HomePage() {
+export default async function HomePage() {
+  let slides: Awaited<ReturnType<typeof getActiveHomepageSlides>> = [];
+  try {
+    slides = await getActiveHomepageSlides();
+  } catch {
+    slides = [];
+  }
   return (
     <SiteShell>
       <main>
+        {slides.length > 0 && <HomeSlider slides={slides} />}
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-copy reveal">
             <p className="eyebrow">مشاوره مالیاتی دقیق</p>
@@ -109,10 +118,15 @@ export default function HomePage() {
             مقالات، ویدئوها و راهنماها تنها پس از تأیید و انتشار رسمی در این بخش قرار
             می‌گیرند. تا آن زمان، هیچ عنوان یا توصیه‌ای به‌صورت نمونه ساخته نمی‌شود.
           </p>
-          <div className="publication-links">
-            <Link href="/articles">مقالات</Link>
-            <Link href="/videos">ویدئوها</Link>
-            <Link href="/mini-books">مینی‌بوک‌ها</Link>
+          <div className="action-row">
+            <Link className="button-ghost" href="/articles">مقالات</Link>
+            <Link className="button-ghost" href="/videos">ویدئوها</Link>
+            <Link className="button-ghost" href="/mini-books">مینی‌بوک‌ها</Link>
+            <Link className="button-ghost" href="/about">درباره ما</Link>
+            <Link className="button-ghost" href="/consultation">مشاوره</Link>
+            <Link className="button-ghost" href="/tax-qa">پرسش مالیاتی</Link>
+            <Link className="button-ghost" href="/tax-calculator">محاسبه‌گر</Link>
+            <Link className="button-ghost" href="/login">ورود / ثبت‌نام</Link>
           </div>
         </section>
       </main>

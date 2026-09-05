@@ -19,7 +19,9 @@ const serverEnvironmentSchema = z.object({
     ),
   OTP_HMAC_SECRET: z.string().min(32),
   SESSION_HMAC_SECRET: z.string().min(32),
-  SMS_PROVIDER: z.string().trim().min(1),
+  SMS_PROVIDER_URL: z.string().url().optional(),
+  SMS_API_KEY: z.string().trim().min(1).optional(),
+  MEDIA_BASE_URL: z.string().url().optional(),
   SMS_TEMPLATE_ID: z.string().trim().min(1)
 });
 
