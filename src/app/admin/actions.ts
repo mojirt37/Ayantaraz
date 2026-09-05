@@ -22,7 +22,8 @@ async function adminActor() {
 }
 
 async function audit(action: string, entityType: string, entityId: string, actorId: string, metadata: Record<string, string>) {
-  await db.insert(S.auditLogs).values({ actorId, action, entityType, entityId, metadata });
+  const { appendAudit } = await import("@/infrastructure/db/audit");
+  await appendAudit(db, { actorId, action, entityType, entityId, metadata });
 }
 
 const versionTransitionSchema = z.object({
@@ -101,6 +102,31 @@ export async function toggleSlide(formData: FormData): Promise<void> {
   await audit("homepage_slide.toggle", "homepage_slide", parsed.data.id, actor.userId, { active: parsed.data.active });
   revalidatePath("/admin");
   revalidatePath("/");
+}
+
+const purgeSchema = z.object({ olderThanDays: z.coerce.number().int().min(1).max(365) });
+
+/**
+ * Maintenance purge: deletes expired OTP challenges and expired/revoked
+ * sessions older than the given age. Active sessions are never touched.
+ */
+export async function purgeExpiredAuthData(formData: FormData): Promise<void> {
+  const actor = await adminActor();
+  const parsed = purgeSchema.safeParse({ olderThanDays: formData.get("olderThanDays") });
+  if (!parsed.success) throw new Error("VALIDATION_ERROR");
+  const cutoff = new Date(Date.now() - parsed.data.olderThanDays * 86400000);
+  const { and, isNotNull, lt, or } = await import("drizzle-orm");
+  const deadChallenges = await db.delete(S.otpChallenges).where(lt(S.otpChallenges.expiresAt, cutoff)).returning({ id: S.otpChallenges.id });
+  const deadSessions = await db
+    .delete(S.sessions)
+    .where(or(lt(S.sessions.expiresAt, cutoff), and(isNotNull(S.sessions.revokedAt), lt(S.sessions.createdAt, cutoff))))
+    .returning({ id: S.sessions.id });
+  await audit("maintenance.purge_expired_auth", "maintenance", actor.userId, actor.userId, {
+    olderThanDays: String(parsed.data.olderThanDays),
+    challenges: String(deadChallenges.length),
+    sessions: String(deadSessions.length),
+  });
+  revalidatePath("/admin");
 }
 
 const newDraftSchema = z.object({ taxRuleId: z.string().uuid() });

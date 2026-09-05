@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import * as S from "@/infrastructure/db/schema";
 import type { OtpChallengeStore } from "@/modules/identity/application/otp-contract";
@@ -85,6 +85,19 @@ export class PostgresOtpStore implements OtpChallengeStore, OtpSessionStore {
     });
     await db.update(S.otpChallenges).set({ consumedAt: input.now }).where(eq(S.otpChallenges.id, input.challengeId));
     return { kind: "CREATED", session: { userId, sessionId, expiresAt: input.sessionExpiresAt } };
+  }
+
+  /**
+   * Always-on database throttle: counts challenges created for this phone in
+   * the trailing window. Used when Redis is unavailable so rate limiting is
+   * never silently bypassed (fail-closed layer beneath the Redis layer).
+   */
+  async countRecentByPhone(input: { phoneE164: string; since: Date }): Promise<number> {
+    const rows = await db
+      .select({ id: S.otpChallenges.id })
+      .from(S.otpChallenges)
+      .where(and(eq(S.otpChallenges.phoneE164, input.phoneE164), gte(S.otpChallenges.createdAt, input.since)));
+    return rows.length;
   }
 }
 

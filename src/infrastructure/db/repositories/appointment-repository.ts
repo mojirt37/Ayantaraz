@@ -45,13 +45,16 @@ export class PostgresPaymentStore implements PaymentDecisionStore {
     const row = rows[0];
     if (!row) return "NOT_FOUND";
     if (row.status !== "PENDING") return "CONFLICT";
-    await db.update(S.payments).set({ status: input.decision, decidedAt: new Date(), decidedBy: input.actorId }).where(eq(S.payments.id, input.paymentId));
-    await db.insert(S.auditLogs).values({
-      actorId: input.actorId,
-      action: `PAYMENT_${input.decision}`,
-      entityType: "payment",
-      entityId: input.paymentId,
-      metadata: JSON.stringify({ before: row.status, after: input.decision }),
+    const { appendAudit } = await import("@/infrastructure/db/audit");
+    await db.transaction(async (tx) => {
+      await tx.update(S.payments).set({ status: input.decision, decidedAt: new Date(), decidedBy: input.actorId }).where(eq(S.payments.id, input.paymentId));
+      await appendAudit(tx, {
+        actorId: input.actorId,
+        action: `PAYMENT_${input.decision}`,
+        entityType: "payment",
+        entityId: input.paymentId,
+        metadata: { before: row.status, after: input.decision },
+      });
     });
     return "DECIDED";
   }

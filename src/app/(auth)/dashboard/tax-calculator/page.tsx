@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { SiteShell } from "@/components/public/site-shell";
+import { LogoutButton } from "@/components/public/logout-button";
 
 interface TaxResult {
   grossIncome: string;
@@ -99,6 +100,7 @@ export default function TaxCalculatorPage() {
               نتیجه همراه شناسنامه قانون ثبت می‌شود.
             </p>
             <Link className="text-link" href="/dashboard/tax-qa">پرسش و پاسخ مالیاتی</Link>
+            <LogoutButton />
           </div>
         </section>
 

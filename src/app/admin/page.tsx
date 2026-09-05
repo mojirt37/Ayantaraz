@@ -6,7 +6,7 @@ import { db } from "@/infrastructure/db/client";
 import * as S from "@/infrastructure/db/schema";
 import { requireSession } from "@/shared/auth/require-session";
 import { requireAdmin } from "@/modules/users/domain/authorization";
-import { advanceContent, advanceTaxRuleVersion, createTaxRuleDraft, toggleSlide } from "@/app/admin/actions";
+import { advanceContent, advanceTaxRuleVersion, createTaxRuleDraft, purgeExpiredAuthData, toggleSlide } from "@/app/admin/actions";
 
 export const metadata = { robots: { index: false, follow: false }, title: "پنل مدیریت" };
 
@@ -31,16 +31,23 @@ function TransitionButton({ id, next, action, label }: { id: string; next: strin
   );
 }
 
-export default async function AdminPage() {
-  const admin = await currentAdmin();
+const PAGE_SIZE = 20;
 
-  const rules = await db.select().from(S.taxRules).orderBy(S.taxRules.createdAt);
-  const versions = await db.select().from(S.taxRuleVersions).orderBy(desc(S.taxRuleVersions.createdAt)).limit(50);
-  const articles = await db.select().from(S.articles).orderBy(desc(S.articles.createdAt)).limit(50);
-  const videos = await db.select().from(S.videos).orderBy(desc(S.videos.createdAt)).limit(50);
-  const books = await db.select().from(S.miniBooks).orderBy(desc(S.miniBooks.createdAt)).limit(50);
-  const slides = await db.select().from(S.homepageSlides).orderBy(S.homepageSlides.displayOrder).limit(20);
-  const audit = await db.select().from(S.auditLogs).orderBy(desc(S.auditLogs.createdAt)).limit(50);
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ auditPage?: string }> }) {
+  const admin = await currentAdmin();
+  const sp = await searchParams;
+  const auditPage = Math.max(1, Number.parseInt(sp.auditPage ?? "1", 10) || 1);
+
+  const [rules, versions, articles, videos, books, slides, audit, auditTotal] = await Promise.all([
+    db.select().from(S.taxRules).orderBy(S.taxRules.createdAt),
+    db.select().from(S.taxRuleVersions).orderBy(desc(S.taxRuleVersions.createdAt)).limit(PAGE_SIZE),
+    db.select().from(S.articles).orderBy(desc(S.articles.createdAt)).limit(PAGE_SIZE),
+    db.select().from(S.videos).orderBy(desc(S.videos.createdAt)).limit(PAGE_SIZE),
+    db.select().from(S.miniBooks).orderBy(desc(S.miniBooks.createdAt)).limit(PAGE_SIZE),
+    db.select().from(S.homepageSlides).orderBy(S.homepageSlides.displayOrder).limit(PAGE_SIZE),
+    db.select().from(S.auditLogs).orderBy(desc(S.auditLogs.createdAt)).limit(PAGE_SIZE).offset((auditPage - 1) * PAGE_SIZE),
+    db.select({ id: S.auditLogs.id }).from(S.auditLogs).limit(1001),
+  ]);
 
   const ruleName = (id: string) => rules.find((r) => r.id === id)?.stableKey ?? id;
 
@@ -172,9 +179,22 @@ export default async function AdminPage() {
           </ol>
         </section>
 
+        <section className="section" aria-labelledby="admin-maintenance">
+          <p className="eyebrow">نگهداری</p>
+          <h2 id="admin-maintenance">پاکسازی داده‌های منقضی احراز هویت</h2>
+          <p className="lead">چالش‌های منقضی و نشست‌های مرده قدیمی‌تر از آستانه حذف می‌شوند؛ نشست‌های فعال هرگز لمس نمی‌شوند.</p>
+          <form action={purgeExpiredAuthData} style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap", marginTop: "1rem" }}>
+            <div className="form-group">
+              <label htmlFor="purge-days">قدمت (روز)</label>
+              <input id="purge-days" name="olderThanDays" type="number" min={1} max={365} defaultValue={30} required />
+            </div>
+            <button type="submit" className="button-ghost">اجرای پاکسازی</button>
+          </form>
+        </section>
+
         <section className="section" aria-labelledby="admin-audit">
           <p className="eyebrow">شفافیت</p>
-          <h2 id="admin-audit">گزارش حسابرسی (۵۰ مورد اخیر)</h2>
+          <h2 id="admin-audit">گزارش حسابرسی (صفحه {auditPage} · زنجیره هش‌دار)</h2>
           {audit.length === 0 && <p className="empty-state">رویدادی ثبت نشده است.</p>}
           <ol className="service-index">
             {audit.map((a) => (
@@ -182,12 +202,24 @@ export default async function AdminPage() {
                 <div style={{ padding: "0.8rem 0.25rem" }}>
                   <strong style={{ fontSize: "0.9rem" }}>{a.action}</strong>
                   <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.82rem" }}>
-                    {a.entityType} · {a.createdAt.toLocaleString("fa-IR")} · مدیر: {a.actorId ?? "—"}
+                    {a.entityType} · {a.createdAt.toLocaleString("fa-IR")} · مدیر: {a.actorId ?? "—"} · هش: {a.entryHash ? `${a.entryHash.slice(0, 12)}…` : "—"}
                   </p>
                 </div>
               </li>
             ))}
           </ol>
+          <div className="action-row">
+            {auditPage > 1 && (
+              <a className="button-ghost" href={`/admin?auditPage=${auditPage - 1}`}>
+                صفحه قبل
+              </a>
+            )}
+            {auditTotal.length > auditPage * PAGE_SIZE && (
+              <a className="button-ghost" href={`/admin?auditPage=${auditPage + 1}`}>
+                صفحه بعد
+              </a>
+            )}
+          </div>
         </section>
       </main>
     </SiteShell>

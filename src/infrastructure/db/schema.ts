@@ -127,6 +127,8 @@ export const auditLogs = pgTable("audit_logs", {
   entityType: text("entity_type").notNull(),
   entityId: uuid("entity_id").notNull(),
   metadata: jsonb("metadata").notNull().default("{}"),
+  prevHash: text("prev_hash"),
+  entryHash: text("entry_hash").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

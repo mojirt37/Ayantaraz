@@ -3,6 +3,8 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { SiteShell } from "@/components/public/site-shell";
+import { LogoutButton } from "@/components/public/logout-button";
+import { SourceLine } from "@/components/public/source-line";
 
 interface TreeNode {
   id: string;
@@ -94,10 +96,12 @@ export default function TaxQAStartPage() {
               قانونی و تاریخ مؤثر نمایش داده می‌شود؛ در نبود منبع، پاسخی ساخته نمی‌شود.
             </p>
             <div className="action-row">
-              <button className="button" onClick={startQA} disabled={loading}>
-                {loading ? "در حال بارگذاری…" : "شروع پرسش"}
-              </button>
-              <Link className="text-link" href="/">بازگشت به خانه</Link>
+            <button className="button" onClick={startQA} disabled={loading}>
+              {loading ? "در حال بارگذاری…" : "شروع پرسش"}
+            </button>
+            <Link className="text-link" href="/">بازگشت به خانه</Link>
+            <LogoutButton />
+            <LogoutButton scope="all" />
             </div>
           </div>
         </section>
@@ -126,7 +130,7 @@ export default function TaxQAStartPage() {
             {answer && (
               <div className="qa-answer">
                 <p className="qa-content">{answer}</p>
-                {sourceRef && <p className="qa-source">منبع: {sourceRef}</p>}
+                {sourceRef && <SourceLine source={sourceRef} />}
                 <div className="action-row">
                   <button className="button-ghost" onClick={startQA} disabled={loading}>پرسش بعدی</button>
                   <Link className="text-link" href="/consultation">درخواست مشاوره</Link>

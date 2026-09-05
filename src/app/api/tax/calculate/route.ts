@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { and, eq } from "drizzle-orm";
 import { computeTaxResult } from "@/modules/tax/application/calculate-tax";
 import { PostgresTaxStore } from "@/infrastructure/db/repositories/tax-knowledge-repository";
 import { requireSession } from "@/shared/auth/require-session";
+import { calculationInputHash } from "@/modules/tax/domain/calculation-hash";
+import { db } from "@/infrastructure/db/client";
+import * as S from "@/infrastructure/db/schema";
 
 const rialsString = z.string().regex(/^[0-9\s,٬۰-۹]+$/, "must be a non-negative integer amount").transform((s) => s.replace(/[\s,٬]/g, ""));
 import { parseRialsAmount as parseRials } from "@/modules/tax/domain/parse-rials";
@@ -65,11 +69,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     disclaimer: result.disclaimer,
   };
   try {
-    await persistCalculation(actor.userId, result);
+    const { duplicate } = await persistCalculation(actor.userId, result);
+    return NextResponse.json({ ...payload, persisted: true, duplicate }, { status: 200 });
   } catch {
     return NextResponse.json({ ...payload, persisted: false, warning: "calculation completed but history was not persisted" }, { status: 200 });
   }
-  return NextResponse.json({ ...payload, persisted: true }, { status: 200 });
 }
 
 async function persistCalculation(userId: string, result: {
@@ -79,19 +83,39 @@ async function persistCalculation(userId: string, result: {
   monthlyTax: bigint;
   breakdown: string[];
   disclaimer: string;
-}): Promise<void> {
+}): Promise<{ duplicate: boolean }> {
   const store = new PostgresTaxStore();
   const rule = await store.findPublishedRule({ taxType: "income", effectiveDate: new Date().toISOString() });
   if (!rule) throw new Error("no published tax rule available");
+  const normalizedInput: Record<string, string> = {
+    grossIncome: result.grossIncome.toString(),
+    taxableIncome: result.taxableIncome.toString(),
+  };
+  normalizedInput["inputHash"] = calculationInputHash(normalizedInput);
+  // Idempotency: same user + same canonical input under the same rule version
+  // returns the existing record instead of inserting a duplicate row.
+  const existing = await db
+    .select({ id: S.taxCalculations.id })
+    .from(S.taxCalculations)
+    .where(
+      and(
+        eq(S.taxCalculations.userId, userId),
+        eq(S.taxCalculations.taxRuleVersionId, rule.ruleVersionId),
+        eq(S.taxCalculations.inputSnapshot, normalizedInput)
+      )
+    )
+    .limit(1);
+  if (existing.length > 0) return { duplicate: true };
   await store.persistCalculation({
     userId,
     ruleVersionId: rule.ruleVersionId,
     engineVersion: rule.engineVersion,
     effectiveDate: new Date().toISOString(),
     snapshot: {
-      normalizedInput: { grossIncome: result.grossIncome.toString(), taxableIncome: result.taxableIncome.toString() },
+      normalizedInput,
       output: { tax: result.tax.toString(), monthlyTax: result.monthlyTax.toString(), breakdown: JSON.stringify(result.breakdown) },
       disclaimer: result.disclaimer,
     },
   });
+  return { duplicate: false };
 }

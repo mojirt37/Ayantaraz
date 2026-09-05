@@ -25,7 +25,12 @@ const requestSchema = z.object({
   action: z.literal("request-otp"),
   phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/, "invalid phone"),
   ip: z.string().max(64).optional(),
+  // Honeypot: real users never fill it; bots do. Filled => silent fake success.
+  website: z.string().max(0).optional(),
 });
+
+const DB_THROTTLE_WINDOW_MS = 10 * 60 * 1000;
+const DB_THROTTLE_MAX = 5;
 
 const verifySchema = z.object({
   action: z.literal("verify-otp"),
@@ -48,21 +53,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 async function handleRequestOtp(raw: unknown) {
   const parsed = requestSchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "invalid phone" }, { status: 422 });
-  const { phone, ip } = parsed.data;
+  const { phone, ip, website } = parsed.data;
+  if (website) {
+    // Bot trap: identical success shape, no challenge created, nothing sent.
+    return NextResponse.json({ challengeId: crypto.randomUUID(), status: "sent" });
+  }
 
+  const hmacSecret = requiredSecret("OTP_HMAC_SECRET");
+  if (!hmacSecret) return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
+  const store = new PostgresOtpStore(hmacSecret);
   const redis = getRedis();
   if (redis) {
     const allowed = await new RedisRateLimiter(redis).acquire(`otp:${phone}:${ip ?? "unknown"}`);
     if (allowed === "RATE_LIMITED") return NextResponse.json({ error: "too many requests, try again later" }, { status: 429 });
+  } else {
+    // Fail-closed: database trailing-window throttle when Redis is absent.
+    const recent = await store.countRecentByPhone({ phoneE164: phone, since: new Date(Date.now() - DB_THROTTLE_WINDOW_MS) });
+    if (recent >= DB_THROTTLE_MAX) return NextResponse.json({ error: "too many requests, try again later" }, { status: 429 });
   }
-  const hmacSecret = requiredSecret("OTP_HMAC_SECRET");
-  if (!hmacSecret) return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
 
   const otp = generateOtp();
   const challengeId = crypto.randomUUID();
   const codeHmac = hmacOtp(challengeId, phone, otp, hmacSecret);
 
-  const store = new PostgresOtpStore(hmacSecret);
   const now = new Date();
   await store.create({
     id: challengeId,

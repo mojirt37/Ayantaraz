@@ -121,6 +121,8 @@ export default function LoginPage() {
               />
             </div>
           </div>
+          {/* Honeypot: invisible to humans; bots fill it and receive a silent fake success. */}
+          <input type="text" name="website" autoComplete="off" tabIndex={-1} aria-hidden="true" value="" readOnly className="sr-only" />
           <div className="action-row">
             <button className="button" onClick={() => requestCode(false)} disabled={loading || (challengeId !== null && cooldown > 0)}>
               {loading ? "در حال ارسال…" : challengeId ? "ارسال مجدد کد" : "ارسال کد تأیید"}
