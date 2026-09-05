@@ -6,7 +6,7 @@ import { db } from "@/infrastructure/db/client";
 import * as S from "@/infrastructure/db/schema";
 import { requireSession } from "@/shared/auth/require-session";
 import { requireAdmin } from "@/modules/users/domain/authorization";
-import { advanceContent, advanceTaxRuleVersion, createTaxRuleDraft, purgeExpiredAuthData, toggleSlide } from "@/app/admin/actions";
+import { advanceContent, advanceTaxRuleVersion, createSlot, createTaxRuleDraft, purgeExpiredAuthData, toggleSlide } from "@/app/admin/actions";
 
 export const metadata = { robots: { index: false, follow: false }, title: "پنل مدیریت" };
 
@@ -38,13 +38,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const auditPage = Math.max(1, Number.parseInt(sp.auditPage ?? "1", 10) || 1);
 
-  const [rules, versions, articles, videos, books, slides, audit, auditNextProbe] = await Promise.all([
+  const [rules, versions, articles, videos, books, slides, slots, audit, auditNextProbe] = await Promise.all([
     db.select().from(S.taxRules).orderBy(S.taxRules.createdAt),
     db.select().from(S.taxRuleVersions).orderBy(desc(S.taxRuleVersions.createdAt)).limit(PAGE_SIZE),
     db.select().from(S.articles).orderBy(desc(S.articles.createdAt)).limit(PAGE_SIZE),
     db.select().from(S.videos).orderBy(desc(S.videos.createdAt)).limit(PAGE_SIZE),
     db.select().from(S.miniBooks).orderBy(desc(S.miniBooks.createdAt)).limit(PAGE_SIZE),
     db.select().from(S.homepageSlides).orderBy(S.homepageSlides.displayOrder).limit(PAGE_SIZE),
+    db.select().from(S.appointmentSlots).orderBy(S.appointmentSlots.startsAt).limit(PAGE_SIZE),
     db.select().from(S.auditLogs).orderBy(desc(S.auditLogs.createdAt)).limit(PAGE_SIZE).offset((auditPage - 1) * PAGE_SIZE),
     // One extra row probes "has next page" without counting the whole table.
     db.select({ id: S.auditLogs.id }).from(S.auditLogs).orderBy(desc(S.auditLogs.createdAt)).limit(PAGE_SIZE + 1).offset(auditPage * PAGE_SIZE),
@@ -178,6 +179,35 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               </li>
             ))}
           </ol>
+        </section>
+
+        <section className="section" aria-labelledby="admin-slots">
+          <p className="eyebrow">مشاوره</p>
+          <h2 id="admin-slots">زمان‌های قابل رزرو</h2>
+          {slots.length === 0 && <p className="empty-state">زمانی تعریف نشده است.</p>}
+          <ol className="service-index">
+            {slots.map((s) => (
+              <li key={s.id}>
+                <div style={{ padding: "0.8rem 0.25rem" }}>
+                  <strong style={{ fontSize: "0.9rem" }}>
+                    {s.startsAt.toLocaleString("fa-IR")} تا {s.endsAt.toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" })}
+                  </strong>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <h3 style={{ marginTop: "1.2rem" }}>تعریف زمان جدید</h3>
+          <form action={createSlot} style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
+            <div className="form-group">
+              <label htmlFor="slot-start">شروع</label>
+              <input id="slot-start" name="startsAt" type="datetime-local" required dir="ltr" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="slot-end">پایان</label>
+              <input id="slot-end" name="endsAt" type="datetime-local" required dir="ltr" />
+            </div>
+            <button type="submit" className="button-ghost">ثبت زمان</button>
+          </form>
         </section>
 
         <section className="section" aria-labelledby="admin-maintenance">

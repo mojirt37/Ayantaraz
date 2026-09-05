@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { eq } from "drizzle-orm";
 import { hashSessionToken } from "@/modules/identity/domain/session";
 import { PostgresSessionStore } from "@/infrastructure/db/repositories/session-repository";
+import { db } from "@/infrastructure/db/client";
+import * as S from "@/infrastructure/db/schema";
 
 function requiredSecret(): string | null {
   const value = process.env["SESSION_HMAC_SECRET"];
@@ -14,6 +17,23 @@ function bearerToken(request: NextRequest): string | null {
   const cookie = request.headers.get("cookie") ?? "";
   const value = cookie.match(/(?:^|;\s*)session=([^;]+)/)?.[1];
   return value ? decodeURIComponent(value) : null;
+}
+
+/**
+ * GET /api/auth/session — identity of the current session (401 when absent).
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const secret = requiredSecret();
+  if (!secret) return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
+  const token = bearerToken(request);
+  if (!token) return NextResponse.json({ error: "authentication required" }, { status: 401 });
+  const store = new PostgresSessionStore();
+  const record = await store.findActiveByTokenHash({ tokenHash: hashSessionToken(token, secret), now: new Date() });
+  if (!record) return NextResponse.json({ error: "authentication required" }, { status: 401 });
+  const rows = await db.select({ id: S.users.id, role: S.users.role }).from(S.users).where(eq(S.users.id, record.userId)).limit(1);
+  const user = rows[0];
+  if (!user) return NextResponse.json({ error: "authentication required" }, { status: 401 });
+  return NextResponse.json({ userId: user.id, role: user.role });
 }
 
 /**

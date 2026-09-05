@@ -54,7 +54,7 @@ export function HomeSlider({ slides }: Readonly<{ slides: HomeSlide[] }>) {
             aria-label={`${i + 1} از ${slides.length}`}
           >
             {s.imageUrl && (
-              <div className="slide-media">
+              <div className="slide-media" key={i === index ? `active-${s.id}` : `idle-${s.id}`}>
                 {/* Plain img: media host is operator-configured (MEDIA_BASE_URL) and outside Next optimizer allowlist by design. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -63,7 +63,11 @@ export function HomeSlider({ slides }: Readonly<{ slides: HomeSlide[] }>) {
                   loading={i === 0 ? "eager" : "lazy"}
                   decoding="async"
                   fetchPriority={i === 0 ? "high" : "auto"}
+                  className={i === index ? "kenburns" : undefined}
                 />
+                {i === index && slides.length > 1 && !paused && (
+                  <span key={`progress-${index}`} className="slide-progress" aria-hidden="true" />
+                )}
               </div>
             )}
             <div className="slide-copy">

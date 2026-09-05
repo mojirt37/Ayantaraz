@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
@@ -11,7 +12,6 @@ import { transitionVersion } from "@/modules/tax/domain/version-state";
 import { transitionContent } from "@/modules/content/domain/content-state";
 
 async function adminActor() {
-  const { headers } = await import("next/headers");
   const requestHeaders = await headers();
   const actor = await requireSession({
     headers: { get: (name: string) => requestHeaders.get(name) },
@@ -126,6 +126,35 @@ export async function purgeExpiredAuthData(formData: FormData): Promise<void> {
     challenges: String(deadChallenges.length),
     sessions: String(deadSessions.length),
   });
+  revalidatePath("/admin");
+}
+
+const slotSchema = z
+  .object({ startsAt: z.string().min(1), endsAt: z.string().min(1) })
+  .refine((v) => !Number.isNaN(Date.parse(v.startsAt)) && !Number.isNaN(Date.parse(v.endsAt)), { message: "invalid datetime" })
+  .refine((v) => Date.parse(v.endsAt) > Date.parse(v.startsAt), { message: "endsAt must be after startsAt" })
+  .refine((v) => Date.parse(v.startsAt) > Date.now(), { message: "slot must be in the future" });
+
+/** Admin creates a bookable consultation slot. Uniqueness is DB-enforced. */
+export async function createSlot(formData: FormData): Promise<void> {
+  const actor = await adminActor();
+  const parsed = slotSchema.safeParse({ startsAt: formData.get("startsAt"), endsAt: formData.get("endsAt") });
+  if (!parsed.success) throw new Error("VALIDATION_ERROR");
+  try {
+    const [created] = await db
+      .insert(S.appointmentSlots)
+      .values({ startsAt: new Date(parsed.data.startsAt), endsAt: new Date(parsed.data.endsAt) })
+      .returning({ id: S.appointmentSlots.id });
+    if (created) {
+      await audit("appointment_slot.create", "appointment_slot", created.id, actor.userId, {
+        startsAt: parsed.data.startsAt,
+        endsAt: parsed.data.endsAt,
+      });
+    }
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === "23505") throw new Error("CONFLICT");
+    throw err;
+  }
   revalidatePath("/admin");
 }
 
