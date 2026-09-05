@@ -10,7 +10,7 @@ interface TreeNode {
   options: { id: string; label: string }[];
 }
 
-interface AnswerNode {
+interface AnswerPayload {
   kind: "ANSWER";
   answer: {
     knowledgeVersionId: string;
@@ -20,33 +20,35 @@ interface AnswerNode {
   };
 }
 
-interface ClarificationNode {
-  kind: "CLARIFICATION";
-  node: TreeNode;
-}
-
 interface NoAnswer {
   kind: "NO_APPROVED_ANSWER";
 }
 
-type QAResponse = TreeNode | AnswerNode | NoAnswer;
+type QAResponse = TreeNode | AnswerPayload | NoAnswer;
 
 export default function TaxQAStartPage() {
   const [node, setNode] = useState<TreeNode | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [sourceRef, setSourceRef] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const startQA = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/tax/qa");
+      if (!res.ok) throw new Error("request failed");
       const data: QAResponse = await res.json();
       if ("prompt" in data) {
         setNode(data as TreeNode);
         setAnswer(null);
         setSourceRef(null);
+      } else {
+        setError("در حال حاضر مسیر پرسش در دسترس نیست؛ دوباره تلاش کنید.");
       }
+    } catch {
+      setError("ارتباط با سرور برقرار نشد؛ دوباره تلاش کنید.");
     } finally {
       setLoading(false);
     }
@@ -55,8 +57,10 @@ export default function TaxQAStartPage() {
   const selectOption = useCallback(async (optionId: string) => {
     if (!node) return;
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/tax/qa?nodeId=${node.id}&optionId=${optionId}`);
+      const res = await fetch(`/api/tax/qa?nodeId=${encodeURIComponent(node.id)}&optionId=${encodeURIComponent(optionId)}`);
+      if (!res.ok && res.status !== 404) throw new Error("request failed");
       const data: QAResponse = await res.json();
       if ("prompt" in data) {
         setNode(data as TreeNode);
@@ -67,10 +71,12 @@ export default function TaxQAStartPage() {
         setSourceRef(data.answer.sourceReference);
         setNode(null);
       } else {
-        setAnswer("متأسفانه پاسخ تأییدشده‌ای برای این مسیر یافت نشد. لطفاً مشاوره بگیرید.");
+        setAnswer("برای این مسیر، منبع تأییدشده‌ای ثبت نشده است. برای بررسی پرونده خود، مشاوره تخصصی درخواست کنید.");
         setNode(null);
         setSourceRef(null);
       }
+    } catch {
+      setError("ارتباط با سرور برقرار نشد؛ دوباره تلاش کنید.");
     } finally {
       setLoading(false);
     }
@@ -80,25 +86,31 @@ export default function TaxQAStartPage() {
     <SiteShell>
       <main>
         <section className="hero" aria-labelledby="tax-qa-workspace-title">
-          <div className="hero-copy">
-            <p className="eyebrow">فضای تعاملی مالیاتی</p>
-            <h1 id="tax-qa-workspace-title">سیستم پرسش و پاسخ مالیاتی</h1>
+          <div className="hero-copy reveal">
+            <p className="eyebrow">میزکار پرسش مالیاتی</p>
+            <h1 id="tax-qa-workspace-title">قدم‌به‌قدم تا پاسخ مستند</h1>
             <p className="lead">
-              با پیشرفت تدریجی، سؤال خود را مطرح کنید و از دیکشنری قانونی تأییدشده پاسخ دریافت کنید.
+              حوزه پرسش خود را انتخاب کنید و مسیر را دنبال نمایید. هر پاسخ با منبع
+              قانونی و تاریخ مؤثر نمایش داده می‌شود؛ در نبود منبع، پاسخی ساخته نمی‌شود.
             </p>
-            <button className="button" onClick={startQA} disabled={loading}>
-              {loading ? "در حال بارگذاری..." : "شروع پرسش مالیاتی"}
-            </button>
-            <Link className="text-link" href="/">بازگشت به خانه</Link>
+            <div className="action-row">
+              <button className="button" onClick={startQA} disabled={loading}>
+                {loading ? "در حال بارگذاری…" : "شروع پرسش"}
+              </button>
+              <Link className="text-link" href="/">بازگشت به خانه</Link>
+            </div>
           </div>
         </section>
 
-        <section aria-labelledby="workspace-title">
-          <h2 id="workspace-title">پنجره مکالمه</h2>
+        <section className="section" aria-labelledby="workspace-title" aria-live="polite">
+          <p className="eyebrow">گفت‌وگو</p>
+          <h2 id="workspace-title">مسیر پرسش شما</h2>
           <div className="qa-workspace">
-            {!node && !answer && !loading && (
-              <p className="empty-state">برای شروع، دکمه بالا را بزنید.</p>
+            {!node && !answer && !loading && !error && (
+              <p className="empty-state">برای شروع، دکمه «شروع پرسش» را بزنید.</p>
             )}
+            {loading && <p className="loading-text" role="status">در حال دریافت مرحله بعد…</p>}
+            {error && <p className="error-text" role="alert">{error}</p>}
             {node && (
               <div className="qa-node">
                 <p className="qa-prompt">{node.prompt}</p>
@@ -115,7 +127,10 @@ export default function TaxQAStartPage() {
               <div className="qa-answer">
                 <p className="qa-content">{answer}</p>
                 {sourceRef && <p className="qa-source">منبع: {sourceRef}</p>}
-                <button className="button" onClick={startQA} disabled={loading}>سؤال بعدی</button>
+                <div className="action-row">
+                  <button className="button-ghost" onClick={startQA} disabled={loading}>پرسش بعدی</button>
+                  <Link className="text-link" href="/consultation">درخواست مشاوره</Link>
+                </div>
               </div>
             )}
           </div>

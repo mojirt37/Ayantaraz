@@ -18,6 +18,7 @@ const productNavigation = [
 export function SiteShell({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <div className="site-shell">
+      <a className="skip-link" href="#main">پرش به محتوای اصلی</a>
       <header className="site-header">
         <div className="header-identity">
           <Link className="brand" href="/" aria-label="آیان تراز، صفحه اصلی">
@@ -39,9 +40,9 @@ export function SiteShell({ children }: Readonly<{ children: ReactNode }>) {
           ورود امن
         </Link>
       </header>
-      {children}
+      <div id="main">{children}</div>
       <footer className="site-footer">
-        <p>آیان تراز — خدمات تخصصی حسابداری و مالیاتی</p>
+        <p>آیان تراز — تصمیم مالیاتیِ روشن، مستند و قابل پیگیری؛ بدون حدس و بدون ادعا.</p>
         <nav aria-label="مسیرهای خدمات">
           {productNavigation.map(([label, href]) => (
             <Link key={href} href={href}>

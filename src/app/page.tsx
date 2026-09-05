@@ -3,13 +3,24 @@ import Link from "next/link";
 import { SiteShell } from "@/components/public/site-shell";
 
 const services = [
-  ["پرسش و پاسخ مالیاتی", "پاسخ‌ها فقط بر پایه دانش و منابع تأییدشده ارائه می‌شوند.", "/tax-qa"],
-  [
-    "محاسبه‌گر مالیاتی",
-    "نتیجه‌گیری فقط با قانون نسخه‌دار و داده‌های معتبر انجام می‌شود.",
-    "/tax-calculator"
-  ],
-  ["مشاوره تخصصی", "برای بررسی مواردی که پاسخ قطعی تأییدشده ندارند.", "/consultation"]
+  {
+    title: "پرسش و پاسخ مالیاتی",
+    problem: "پاسخ‌های پراکنده و غیرقابل استناد، تصمیم را پرریسک می‌کند.",
+    solution: "هر پاسخ فقط از دانش تأییدشده، با منبع و تاریخ مؤثر ارائه می‌شود؛ در نبود منبع، پاسخی داده نمی‌شود.",
+    href: "/tax-qa",
+  },
+  {
+    title: "محاسبه‌گر مالیاتی",
+    problem: "محاسبه دستی، خطای گرد کردن و نسخه قانون را پنهان می‌کند.",
+    solution: "ورودی نرمال‌شده، قانون نسخه‌دار و نتیجه تکرارپذیر؛ هر محاسبه با شناسنامه قانون ثبت می‌شود.",
+    href: "/tax-calculator",
+  },
+  {
+    title: "مشاوره تخصصی",
+    problem: "برخی پرونده‌ها به بررسی انسانی نیاز دارند، نه فرمول.",
+    solution: "رزرو زمان مشاوره با کنترل هم‌زمانی در سمت سرور؛ بدون رزرو نمایشی.",
+    href: "/consultation",
+  },
 ] as const;
 
 export default function HomePage() {
@@ -17,75 +28,86 @@ export default function HomePage() {
     <SiteShell>
       <main>
         <section className="hero" aria-labelledby="hero-title">
-          <div className="hero-copy">
-            <p className="eyebrow">قدرت از سادگی میاد</p>
-            <h1 id="hero-title">تصمیم مالیاتیِ روشن، قابل پیگیری و مسئولانه</h1>
+          <div className="hero-copy reveal">
+            <p className="eyebrow">مشاوره مالیاتی دقیق</p>
+            <h1 id="hero-title">پیش از هر تصمیم مالیاتی، منبع آن روشن باشد</h1>
             <p className="lead">
-              آیان تراز مسیر دسترسی به محتوای تخصصی، پاسخ‌های تأییدشده و خدمات مشاوره را شفاف نگه
-              می‌دارد.
+              آیان تراز سه مسیر مشخص ارائه می‌دهد: پاسخ مستند به پرسش‌های مالیاتی، محاسبه
+              تکرارپذیر بر اساس قانون نسخه‌دار، و مشاوره انسانی برای مواردی که فرمول پاسخ
+              نمی‌دهد.
             </p>
             <div className="action-row">
               <Link className="button" href="/consultation">
                 درخواست مشاوره
               </Link>
               <Link className="text-link" href="/tax-qa">
-                نحوه پاسخ‌گویی را ببینید
+                شیوه پاسخ‌گویی را ببینید
               </Link>
             </div>
           </div>
-          <aside className="hero-assurance" aria-label="تعهد خدمت">
-            <span className="assurance-number">۳</span>
-            <p>لایه کنترل برای هر تصمیم</p>
-            <small>ورودی روشن · منبع تأییدشده · نتیجه قابل پیگیری</small>
+          <aside className="assurance-ledger reveal reveal-1" aria-label="تعهد روش کار">
+            <p className="panel-kicker">روش کار</p>
+            <dl>
+              <dt>ورودی</dt>
+              <dd>روشن و قابل بررسی ثبت می‌شود</dd>
+              <dt>منبع</dt>
+              <dd>فقط نسخه تأییدشده با تاریخ مؤثر</dd>
+              <dt>نتیجه</dt>
+              <dd>قابل پیگیری؛ بدون منبع، بدون پاسخ قطعی</dd>
+            </dl>
           </aside>
         </section>
-        <section className="process-section" aria-labelledby="process-title">
-          <div>
-            <p className="eyebrow">مسیر شفاف</p>
-            <h2 id="process-title">پیش از هر نتیجه، منبع و تاریخ بررسی می‌شود.</h2>
-          </div>
+        <section className="section reveal reveal-1" aria-labelledby="process-title">
+          <p className="eyebrow">مسیر شفاف</p>
+          <h2 id="process-title">هر نتیجه، سه لایه کنترل را پشت سر می‌گذارد</h2>
           <ol className="process-list">
             <li>
-              <span>۱</span>
+              <span className="step" aria-hidden="true">۱</span>
               <div>
                 <strong>ورودی دقیق</strong>
-                <p>اطلاعات لازم را روشن و قابل بررسی ثبت کنید.</p>
+                <p>اطلاعات لازم روشن ثبت و نرمال‌سازی می‌شود؛ ورودی مبهم به نتیجه تبدیل نمی‌شود.</p>
               </div>
             </li>
             <li>
-              <span>۲</span>
+              <span className="step" aria-hidden="true">۲</span>
               <div>
                 <strong>بررسی نسخه</strong>
-                <p>فقط مسیرهای تأییدشده و تاریخ مؤثر قابل استفاده‌اند.</p>
+                <p>فقط قانون و دانش منتشرشده با تاریخ مؤثر معتبر است؛ نسخه منقضی کنار گذاشته می‌شود.</p>
               </div>
             </li>
             <li>
-              <span>۳</span>
+              <span className="step" aria-hidden="true">۳</span>
               <div>
                 <strong>نتیجه مسئولانه</strong>
-                <p>در نبود منبع معتبر، پاسخ قطعی نمایش داده نمی‌شود.</p>
+                <p>در نبود منبع معتبر، پاسخ قطعی نمایش داده نمی‌شود و مسیر مشاوره پیشنهاد می‌گردد.</p>
               </div>
             </li>
           </ol>
         </section>
-        <section aria-labelledby="services-title">
-          <h2 id="services-title">خدمات</h2>
-          <div className="service-grid">
-            {services.map(([title, description, href]) => (
-              <article className="service-card" key={href}>
-                <h3>{title}</h3>
-                <p>{description}</p>
-                <Link href={href}>مشاهده مسیر</Link>
-              </article>
+        <section className="section reveal reveal-2" aria-labelledby="services-title">
+          <p className="eyebrow">خدمات</p>
+          <h2 id="services-title">سه مسیر، هر یک برای یک مسئله مشخص</h2>
+          <ol className="service-index">
+            {services.map((s) => (
+              <li key={s.href}>
+                <Link href={s.href}>
+                  <span>
+                    <strong>{s.title}</strong>
+                    <p>مسئله: {s.problem}</p>
+                    <p>راه‌حل: {s.solution}</p>
+                  </span>
+                  <span className="go" aria-hidden="true">← مشاهده مسیر</span>
+                </Link>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
-        <section className="publication-section" aria-labelledby="publication-title">
+        <section className="section reveal reveal-3" aria-labelledby="publication-title">
           <p className="eyebrow">انتشار کنترل‌شده</p>
-          <h2 id="publication-title">محتوا، ویدئو و راهنمای منتشرشده</h2>
+          <h2 id="publication-title">کتابخانه منتشرشده</h2>
           <p className="lead">
-            این بخش پس از تأیید و انتشار رسمی، منابع در دسترس را نمایش می‌دهد. تا آن زمان، هیچ عنوان
-            یا توصیه‌ای به‌صورت نمونه ساخته نمی‌شود.
+            مقالات، ویدئوها و راهنماها تنها پس از تأیید و انتشار رسمی در این بخش قرار
+            می‌گیرند. تا آن زمان، هیچ عنوان یا توصیه‌ای به‌صورت نمونه ساخته نمی‌شود.
           </p>
           <div className="publication-links">
             <Link href="/articles">مقالات</Link>
