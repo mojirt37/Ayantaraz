@@ -29,3 +29,26 @@ describe("computeEntryHash", () => {
     expect(honest).not.toBe(tampered);
   });
 });
+
+describe("normalizeAuditMetadata", () => {
+  it("passes objects through", async () => {
+    const { normalizeAuditMetadata } = await import("../../src/infrastructure/db/audit");
+    expect(normalizeAuditMetadata({ a: "1" })).toEqual({ a: "1" });
+  });
+
+  it("parses legacy JSON strings", async () => {
+    const { normalizeAuditMetadata } = await import("../../src/infrastructure/db/audit");
+    expect(normalizeAuditMetadata('{"before":"PENDING","after":"CONFIRMED"}')).toEqual({
+      before: "PENDING",
+      after: "CONFIRMED",
+    });
+  });
+
+  it("never throws on garbage", async () => {
+    const { normalizeAuditMetadata } = await import("../../src/infrastructure/db/audit");
+    expect(normalizeAuditMetadata(null)).toEqual({});
+    expect(normalizeAuditMetadata(42)).toEqual({});
+    expect(normalizeAuditMetadata("not-json{{{")).toEqual({ legacy: "not-json{{{" });
+    expect(normalizeAuditMetadata(["x"])).toEqual({});
+  });
+});

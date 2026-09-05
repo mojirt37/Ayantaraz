@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TAX_DECISION_TREE } from "@/modules/knowledge/domain/decision-tree";
 import { TAX_ARTICLES } from "@/modules/knowledge/domain/content";
+import { resolveQaSelection } from "@/modules/knowledge/application/qa-traversal";
 
 const rootNode = TAX_DECISION_TREE[0]!;
 
@@ -12,27 +13,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const articleId = searchParams.get("id");
 
   if (articleSlug || articleId) {
-    const article = TAX_ARTICLES.find((a) => articleSlug ? a.slug === articleSlug : a.id === articleId);
+    const article = TAX_ARTICLES.find((a) => (articleSlug ? a.slug === articleSlug : a.id === articleId));
     if (!article) return NextResponse.json({ error: "article not found" }, { status: 404 });
     return NextResponse.json(article);
   }
 
   if (!nodeId) return NextResponse.json(rootNode);
-  if (nodeId === "root") return NextResponse.json(rootNode);
-  const node = TAX_DECISION_TREE.find((n) => n.id === nodeId);
-  if (node) return NextResponse.json(node);
-  const answer = TAX_ARTICLES.find((a) => a.id === nodeId || a.slug === nodeId);
-  if (answer) {
-    return NextResponse.json({
-      kind: "ANSWER",
-      answer: {
-        knowledgeVersionId: answer.id,
-        sourceReference: answer.sourceReference,
-        effectiveFrom: answer.effectiveFrom,
-        effectiveTo: answer.effectiveTo,
-        content: answer.content,
-      },
-    });
+  if (nodeId === "root" && !optionId) return NextResponse.json(rootNode);
+
+  const selection = resolveQaSelection(TAX_DECISION_TREE, TAX_ARTICLES, nodeId, optionId);
+  if (selection.kind === "INVALID_OPTION") {
+    return NextResponse.json({ error: "option does not belong to this step" }, { status: 422 });
   }
-  return NextResponse.json({ kind: "NO_APPROVED_ANSWER" }, { status: 404 });
+  if (selection.kind === "NOT_FOUND") {
+    return NextResponse.json({ kind: "NO_APPROVED_ANSWER" }, { status: 404 });
+  }
+  if (selection.kind === "ANSWER") {
+    return NextResponse.json({ kind: "ANSWER", answer: selection.answer });
+  }
+  return NextResponse.json(selection.node);
 }

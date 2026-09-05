@@ -65,6 +65,28 @@ export async function appendAudit(database: DbOrTx, entry: AuditEntry): Promise<
   return { id: row.id, entryHash };
 }
 
+/**
+ * Normalizes legacy metadata shapes: rows written before the chained writer
+ * may hold a JSON string instead of an object. Normalization is one-way and
+ * documented so verification never false-positives on old rows.
+ */
+export function normalizeAuditMetadata(raw: unknown): Record<string, string> {
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, string>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, string>;
+      }
+    } catch {
+      return { legacy: raw };
+    }
+  }
+  return {};
+}
+
 /** Recomputes every link; returns the first broken entry id, or null when intact. */
 export async function verifyAuditChain(database: DbOrTx, limit = 5000): Promise<{ ok: true } | { ok: false; brokenAtId: string }> {
   const rows = await database
@@ -73,7 +95,12 @@ export async function verifyAuditChain(database: DbOrTx, limit = 5000): Promise<
     .orderBy(S.auditLogs.createdAt, S.auditLogs.id)
     .limit(limit);
   let prev: string | null = null;
+  let chainStarted = false;
   for (const row of rows) {
+    // Pre-chain legacy rows (empty hash, written before chaining existed) are
+    // skipped until the chain starts; after that, contiguity is enforced.
+    if (!chainStarted && !row.entryHash) continue;
+    chainStarted = true;
     if ((row.prevHash ?? null) !== prev) return { ok: false, brokenAtId: row.id };
     const recomputed = computeEntryHash({
       prevHash: prev,
@@ -81,7 +108,7 @@ export async function verifyAuditChain(database: DbOrTx, limit = 5000): Promise<
       action: row.action,
       entityType: row.entityType,
       entityId: row.entityId,
-      metadata: (row.metadata ?? {}) as Record<string, string>,
+      metadata: normalizeAuditMetadata(row.metadata),
     });
     if (recomputed !== row.entryHash) return { ok: false, brokenAtId: row.id };
     prev = row.entryHash;

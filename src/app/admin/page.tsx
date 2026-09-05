@@ -38,7 +38,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const auditPage = Math.max(1, Number.parseInt(sp.auditPage ?? "1", 10) || 1);
 
-  const [rules, versions, articles, videos, books, slides, audit, auditTotal] = await Promise.all([
+  const [rules, versions, articles, videos, books, slides, audit, auditNextProbe] = await Promise.all([
     db.select().from(S.taxRules).orderBy(S.taxRules.createdAt),
     db.select().from(S.taxRuleVersions).orderBy(desc(S.taxRuleVersions.createdAt)).limit(PAGE_SIZE),
     db.select().from(S.articles).orderBy(desc(S.articles.createdAt)).limit(PAGE_SIZE),
@@ -46,7 +46,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     db.select().from(S.miniBooks).orderBy(desc(S.miniBooks.createdAt)).limit(PAGE_SIZE),
     db.select().from(S.homepageSlides).orderBy(S.homepageSlides.displayOrder).limit(PAGE_SIZE),
     db.select().from(S.auditLogs).orderBy(desc(S.auditLogs.createdAt)).limit(PAGE_SIZE).offset((auditPage - 1) * PAGE_SIZE),
-    db.select({ id: S.auditLogs.id }).from(S.auditLogs).limit(1001),
+    // One extra row probes "has next page" without counting the whole table.
+    db.select({ id: S.auditLogs.id }).from(S.auditLogs).orderBy(desc(S.auditLogs.createdAt)).limit(PAGE_SIZE + 1).offset(auditPage * PAGE_SIZE),
   ]);
 
   const ruleName = (id: string) => rules.find((r) => r.id === id)?.stableKey ?? id;
@@ -214,7 +215,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                 صفحه قبل
               </a>
             )}
-            {auditTotal.length > auditPage * PAGE_SIZE && (
+            {auditNextProbe.length > 0 && (
               <a className="button-ghost" href={`/admin?auditPage=${auditPage + 1}`}>
                 صفحه بعد
               </a>

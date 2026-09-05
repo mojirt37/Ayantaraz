@@ -10,7 +10,9 @@ const pool = new Pool({
 });
 
 pool.on("error", (err: NodeJS.ErrnoException) => {
-  console.error("Unexpected database connection error:", err);
+  // Log only the error code/message: full error objects may embed connection
+  // details (host, user) that must never reach log aggregators.
+  console.error(`Unexpected database connection error [${err.code ?? "UNKNOWN"}]: ${err.message ?? "no message"}`);
   process.exit(1);
 });
 
