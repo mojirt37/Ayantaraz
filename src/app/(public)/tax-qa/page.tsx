@@ -1,23 +1,41 @@
 import Link from "next/link";
+import { SiteShell } from "@/components/public/site-shell";
 
-import { AvailabilityNotice, LandingPage } from "@/components/public/site-shell";
-
-export const metadata = { title: "پرسش و پاسخ مالیاتی" };
-
-export default function TaxQaLandingPage() {
+export default function TaxQAPage() {
   return (
-    <LandingPage
-      eyebrow="پرسش و پاسخ مالیاتی"
-      title="پاسخ قطعی فقط از مسیر تأییدشده"
-      description="برای دریافت پاسخ، پرسش شما با مراحل شفاف‌سازی و دانش نسخه‌دارِ تأییدشده بررسی می‌شود. در نبود مسیر معتبر، پاسخ ساخته نمی‌شود."
-    >
-      <Link className="button" href="/login">
-        ورود برای شروع
-      </Link>
-      <AvailabilityNotice title="پاسخ تأییدشده‌ای برای نمایش عمومی موجود نیست">
-        پرسش‌های خارج از دانش منتشرشده یا دارای اطلاعات ناکافی، پاسخ حدسی دریافت نمی‌کنند. در این
-        وضعیت، مسیر مناسب مشاوره تخصصی است.
-      </AvailabilityNotice>
-    </LandingPage>
+    <SiteShell>
+      <main>
+        <section className="hero" aria-labelledby="tax-qa-title">
+          <div className="hero-copy">
+            <p className="eyebrow">پرسش و پاسخ مالیاتی</p>
+            <h1 id="tax-qa-title">پاسخ‌های دقیق و تأییدشده از منابع قانونی</h1>
+            <p className="lead">
+              سؤال مالیاتی خود را مطرح کنید و از دیکشنری قانونی تأییدشده، پاسخ‌های قطعی و قابل پیگیری دریافت کنید.
+              هیچ پاسخی حدسی یا تولیدشده نیست.
+            </p>
+            <div className="action-row">
+              <Link className="button" href="/tax-qa/start">شروع پرسش مالیاتی</Link>
+              <Link className="text-link" href="/tax-calculator">ماشین‌حساب مالیاتی</Link>
+            </div>
+          </div>
+          <aside className="hero-assurance" aria-label="تضمین کیفیت">
+            <span className="assurance-number">۱۰</span>
+            <p>موضوع مالیاتی قابل پیگیری</p>
+            <small>قانون مالیات درآمد · مالیات بر ارزش افزوده · مالیات مصدری · اموال خالص · خدمات دیجیتال</small>
+          </aside>
+        </section>
+        <section aria-labelledby="topics-title">
+          <h2 id="topics-title">موضوعات مالیاتی</h2>
+          <div className="topic-grid">
+            <a href="/tax-qa/start" className="topic-card">مالیات درآمد</a>
+            <a href="/tax-qa/start" className="topic-card">مالیات بر ارزش افزوده</a>
+            <a href="/tax-qa/start" className="topic-card">مالیات مصدری</a>
+            <a href="/tax-qa/start" className="topic-card">مالیات بر اموال</a>
+            <a href="/tax-qa/start" className="topic-card">سود ارز و طلا</a>
+            <a href="/tax-qa/start" className="topic-card">خدمات دیجیتال</a>
+          </div>
+        </section>
+      </main>
+    </SiteShell>
   );
 }
