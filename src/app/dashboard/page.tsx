@@ -9,7 +9,7 @@ export const metadata = { robots: { index: false, follow: false }, title: "می�
 
 const workspaces = [
   { title: "پرسش مالیاتی", desc: "قدم‌به‌قدم تا پاسخ مستند با منبع و تاریخ مؤثر.", href: "/dashboard/tax-qa" },
-  { title: "محاسبه‌گر مالیاتی", desc: "مالیات ۱۴۰۴ با شناسنامه قانون و نتیجه تکرارپذیر.", href: "/dashboard/tax-calculator" },
+  { title: "محاسبه‌گر مالیاتی", desc: "مالیات حقوق ۱۴۰۵ (و ۱۴۰۴ تاریخی) با شناسنامه قانون و نتیجه تکرارپذیر.", href: "/dashboard/tax-calculator" },
   { title: "رزرو مشاوره", desc: "انتخاب زمان آزاد با ثبت نهایی در سمت سرور.", href: "/dashboard/consultation" },
 ] as const;
 

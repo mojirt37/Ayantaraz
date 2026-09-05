@@ -53,7 +53,16 @@ describe("Tax Decision Tree", () => {
   });
 
   it("article count matches expected", () => {
-    expect(TAX_ARTICLES.length).toBe(10);
+    expect(TAX_ARTICLES.length).toBe(15);
+  });
+
+  it("includes the five sourced 1405 articles", () => {
+    for (const id of ["TAX-ART-011", "TAX-ART-012", "TAX-ART-013", "TAX-ART-014", "TAX-ART-015"]) {
+      const article = TAX_ARTICLES.find((a) => a.id === id);
+      expect(article).toBeDefined();
+      expect(article!.effectiveFrom).toBe("1404-01-01");
+      expect(article!.sourceReference).toContain("۱۴۰۵");
+    }
   });
 
   it("article categories are valid", () => {

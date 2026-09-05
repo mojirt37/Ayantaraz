@@ -12,6 +12,7 @@ const rialsString = z.string().regex(/^[0-9\s,٬۰-۹]+$/, "must be a non-negati
 import { parseRialsAmount as parseRials } from "@/modules/tax/domain/parse-rials";
 
 const bodySchema = z.object({
+  taxYear: z.union([z.literal(1404), z.literal(1405)]).optional(),
   grossMonthlyIncome: rialsString.optional(),
   grossAnnualIncome: rialsString.optional(),
   deductions: z.object({
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const result = computeTaxResult({
     userId: actor.userId,
     taxType: "income",
+    taxYear: body.taxYear ?? 1405,
     grossIncome: body.grossMonthlyIncome ? gross * 12n : gross,
     effectiveDate: new Date().toISOString(),
     deductions: {
@@ -65,6 +67,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     taxableIncome: result.taxableIncome.toString(),
     tax: result.tax.toString(),
     monthlyTax: result.monthlyTax.toString(),
+    taxYear: result.taxYear,
+    engineVersion: result.engineVersion,
+    sourceReference: result.sourceReference,
     breakdown: result.breakdown,
     disclaimer: result.disclaimer,
   };
@@ -81,6 +86,8 @@ async function persistCalculation(userId: string, result: {
   taxableIncome: bigint;
   tax: bigint;
   monthlyTax: bigint;
+  taxYear: number;
+  engineVersion: string;
   breakdown: string[];
   disclaimer: string;
 }): Promise<{ duplicate: boolean }> {
@@ -88,6 +95,8 @@ async function persistCalculation(userId: string, result: {
   const rule = await store.findPublishedRule({ taxType: "income", effectiveDate: new Date().toISOString() });
   if (!rule) throw new Error("no published tax rule available");
   const normalizedInput: Record<string, string> = {
+    taxYear: String(result.taxYear),
+    engineVersion: result.engineVersion,
     grossIncome: result.grossIncome.toString(),
     taxableIncome: result.taxableIncome.toString(),
   };

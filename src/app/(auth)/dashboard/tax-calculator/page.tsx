@@ -10,9 +10,13 @@ interface TaxResult {
   taxableIncome: string;
   tax: string;
   monthlyTax: string;
+  taxYear: number;
+  engineVersion: string;
+  sourceReference: string;
   breakdown: string[];
   disclaimer: string;
   persisted: boolean;
+  duplicate?: boolean;
   warning?: string;
 }
 
@@ -39,6 +43,7 @@ export default function TaxCalculatorPage() {
   const [result, setResult] = useState<TaxResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [taxYear, setTaxYear] = useState<1404 | 1405>(1405);
 
   const set = useCallback((key: string, value: string) => {
     setValues((v) => ({ ...v, [key]: value }));
@@ -53,6 +58,7 @@ export default function TaxCalculatorPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          taxYear,
           grossMonthlyIncome: values["gross"],
           deductions: {
             mandatorySocialSecurity: values["mandatorySS"],
@@ -77,7 +83,7 @@ export default function TaxCalculatorPage() {
     } finally {
       setLoading(false);
     }
-  }, [values]);
+  }, [values, taxYear]);
 
   const formatRials = (n: string) => {
     try {
@@ -93,11 +99,11 @@ export default function TaxCalculatorPage() {
         <section className="hero" aria-labelledby="tax-calc-title">
           <div className="hero-copy reveal">
             <p className="eyebrow">محاسبه‌گر مالیاتی</p>
-            <h1 id="tax-calc-title">مالیات درآمد سال ۱۴۰۴، قدم‌به‌قدم و مستند</h1>
+            <h1 id="tax-calc-title">مالیات حقوق، قدم‌به‌قدم و مستند</h1>
             <p className="lead">
-              درآمد ماهانه و کسورات خود را وارد کنید. سامانه درآمد سالانه را می‌سازد،
-              کسورات قانونی را تا سقف اعمال می‌کند و مالیات را پله‌به‌پله محاسبه می‌نماید؛
-              نتیجه همراه شناسنامه قانون ثبت می‌شود.
+              سال مالیاتی و درآمد ماهانه را انتخاب کنید. سامانه درآمد سالانه را می‌سازد و
+              مالیات را با نرخ‌های پلکانی همان سال محاسبه می‌کند؛ نتیجه همراه شناسنامه
+              قانون ثبت می‌شود. در ۱۴۰۵ معافیت ماهانه ۴۰ میلیون تومان است.
             </p>
             <Link className="text-link" href="/dashboard/tax-qa">پرسش و پاسخ مالیاتی</Link>
             <LogoutButton />
@@ -106,9 +112,40 @@ export default function TaxCalculatorPage() {
 
         <section className="section" aria-labelledby="calc-form-title">
           <p className="eyebrow">ورودی محاسبه</p>
-          <h2 id="calc-form-title">ارقام خود را وارد کنید</h2>
+          <h2 id="calc-form-title">سال مالیاتی و ارقام خود را وارد کنید</h2>
+          <div className="form-group" role="radiogroup" aria-label="سال مالیاتی">
+            <span id="tax-year-label" style={{ fontSize: "0.86rem", color: "var(--muted)", fontWeight: 600 }}>سال مالیاتی</span>
+            <div style={{ display: "flex", gap: "0.6rem" }} role="presentation">
+              {([1405, 1404] as const).map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  role="radio"
+                  aria-checked={taxYear === y}
+                  onClick={() => {
+                    setTaxYear(y);
+                    setResult(null);
+                  }}
+                  className={taxYear === y ? "button" : "button-ghost"}
+                  style={{ minHeight: "2.6rem" }}
+                >
+                  {y === 1405 ? "۱۴۰۵ (قانون بودجه)" : "۱۴۰۴"}
+                </button>
+              ))}
+            </div>
+            <p className="form-hint">
+              {taxYear === 1405
+                ? "معافیت ماهانه ۴۰ میلیون تومان؛ نرخ پلکانی ۱۰ تا ۳۰ درصد بر مازاد."
+                : "قواعد نسخه ۱۴۰۴؛ برای مقایسه تاریخی نگه‌داری می‌شود."}
+            </p>
+          </div>
+          {taxYear === 1405 && (
+            <p className="form-hint" style={{ marginTop: "1rem" }}>
+              در محاسبه ۱۴۰۵ سقف معافیت مستقیماً از حقوق ناخالص کسر می‌شود؛ اقلام کسور جداگانه اعمال نمی‌گردد.
+            </p>
+          )}
           <div className="form-grid">
-            {FIELDS.map((f, i) => (
+            {(taxYear === 1405 ? FIELDS.slice(0, 1) : FIELDS).map((f, i) => (
               <div className={`form-group${i === 0 ? " span-2" : ""}`} key={f.key}>
                 <label htmlFor={f.id}>{f.label}</label>
                 <input
@@ -148,6 +185,10 @@ export default function TaxCalculatorPage() {
                 {result.breakdown.map((line, i) => <li key={i}>{line}</li>)}
               </ol>
               <p className="disclaimer">{result.disclaimer}</p>
+              <p className="media-note" style={{ padding: "0 1.3rem 1rem" }}>
+                سال مالیاتی {result.taxYear} · موتور {result.engineVersion} · منبع: {result.sourceReference}
+                {result.duplicate ? " · این محاسبه تکراری بود و رکورد قبلی برگردانده شد." : ""}
+              </p>
               {result.warning && <p className="error-text" style={{ padding: "0 1.3rem 1rem" }}>{result.warning}</p>}
             </div>
             <div className="action-row">

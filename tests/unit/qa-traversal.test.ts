@@ -39,4 +39,14 @@ describe("resolveQaSelection", () => {
     const result = resolveQaSelection(TAX_DECISION_TREE, TAX_ARTICLES, "no-such-node", null);
     expect(result.kind).toBe("NOT_FOUND");
   });
+
+  it("walks the 1405 branch to a sourced answer", () => {
+    const step1 = resolveQaSelection(TAX_DECISION_TREE, TAX_ARTICLES, "income-tax", "tax-1405");
+    expect(step1.kind).toBe("NODE");
+    const step2 = resolveQaSelection(TAX_DECISION_TREE, TAX_ARTICLES, "tax-1405", "answer-1405-brackets");
+    expect(step2.kind).toBe("ANSWER");
+    if (step2.kind === "ANSWER") {
+      expect(step2.answer.sourceReference).toContain("۱۴۰۵");
+    }
+  });
 });
