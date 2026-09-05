@@ -56,7 +56,7 @@ export default function TaxCalculatorPage() {
             <p className="lead">
               درآمد ماهانه خود را وارد کنید تا مالیات تخمینی سالانه بر اساس آیین‌نامه مالیات درآمد افراد طبیعی محاسبه شود.
             </p>
-            <Link className="text-link" href="/tax-qa">پرسش و پاسخ مالیاتی</Link>
+            <Link className="text-link" href="/dashboard/tax-qa">پرسش و پاسخ مالیاتی</Link>
           </div>
         </section>
 
