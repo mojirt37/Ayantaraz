@@ -1,0 +1,126 @@
+# ─────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Ayantaraz production stack
+#
+# Services:
+#   db      — PostgreSQL 16 (Alpine, persistent volume)
+#   redis   — Redis 7 (Alpine, ephemeral)
+#   init    — Runs DB migrations then exits
+#   app     — Next.js production server
+#
+# Usage:
+#   bash setup.sh                  # generate .env first
+#   docker compose up -d --build   # build + deploy
+#   docker compose down            # stop
+#   docker compose logs -f app     # tail app logs
+# ─────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ayan_taraz
+      POSTGRES_USER: ayan_taraz
+      POSTGRES_PASSWORD: ayan_taraz_secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-EXEC", "pg_isready -U ayan_taraz -d ayan_taraz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  # ── Redis ───────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  # ── Init container (migrations) ─────────────────────────────────────
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_ID: ${BUILD_ID:-release-placeholder}
+    environment:
+      DATABASE_URL: postgresql://ayan_taraz:ayan_taraz_secret@db:5432/ayan_taraz
+      NODE_ENV: production
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "⏳ Waiting for PostgreSQL ..."
+        until node -e " \
+          const { Pool } = require('pg'); \
+          const p = new Pool({ connectionString: process.env.DATABASE_URL }); \
+          p.query('SELECT 1').then(() => { p.end(); process.exit(0); }).catch(() => { p.end(); process.exit(1); }) \
+        " 2>/dev/null; do
+          sleep 2
+        done
+        echo "✔ PostgreSQL ready"
+        echo "⏳ Running migrations ..."
+        npx drizzle-kit migrate --config=drizzle.config.ts
+        echo "✔ Migrations complete"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+    # Prevent restart loops — run once and exit
+    restart: "no"
+
+  # ── Application ─────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_ID: ${BUILD_ID:-release-placeholder}
+    env_file:
+      - .env
+    environment:
+      # Override DB/Redis URLs to use docker-compose service names
+      DATABASE_URL: postgresql://ayan_taraz:ayan_taraz_secret@db:5432/ayan_taraz
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>r.json()).then(d=>process.exit(d.status==='ok'||d.status==='degraded'?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  backend:
+    driver: bridge
