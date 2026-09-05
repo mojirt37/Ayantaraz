@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import * as S from "@/infrastructure/db/schema";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -13,7 +14,7 @@ pool.on("error", (err: NodeJS.ErrnoException) => {
   process.exit(1);
 });
 
-export const db = drizzle(pool, { schema: undefined });
+export const db = drizzle(pool, { schema: S });
 
 export async function disconnectDb(): Promise<void> {
   await pool.end();

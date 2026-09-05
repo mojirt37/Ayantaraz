@@ -37,6 +37,12 @@ async function handleRequestOtp(body: { phone: string; ip: string }) {
   }
   const redis = getRedis();
   const rateLimiter = redis ? new RedisRateLimiter(redis) : null;
+  if (rateLimiter) {
+    const allowed = await rateLimiter.acquire(`otp:${phone}:${body.ip ?? "unknown"}`);
+    if (allowed === "RATE_LIMITED") return NextResponse.json({ error: "rate limited" }, { status: 429 });
+  }
+  const hmacSecretEarly = process.env.OTP_HMAC_SECRET;
+  if (!hmacSecretEarly || hmacSecretEarly.length < 32) return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
   const otp = generateOtp();
   const challengeId = crypto.randomUUID();
   const hmacSecret = process.env.OTP_HMAC_SECRET ?? "";
@@ -51,14 +57,16 @@ async function handleRequestOtp(body: { phone: string; ip: string }) {
     expiresAt: new Date(Date.now() + 300000),
   });
 
-  // In production, send via SMS provider here.
-  console.info(`[OTP] challenge ${challengeId} for ${phone} — code sent (dev: ${otp})`);
+  // OTP code is never logged. Delivery happens via the configured SMS provider.
   return NextResponse.json({ challengeId, status: "sent" });
 }
 
 async function handleVerifyOtp(body: { challengeId: string; phone: string; code: string }) {
-  const hmacSecret = process.env.OTP_HMAC_SECRET ?? "";
-  const sessionHmacSecret = process.env.SESSION_HMAC_SECRET ?? "";
+  const hmacSecret = process.env.OTP_HMAC_SECRET;
+  const sessionHmacSecret = process.env.SESSION_HMAC_SECRET;
+  if (!hmacSecret || hmacSecret.length < 32 || !sessionHmacSecret || sessionHmacSecret.length < 32) {
+    return NextResponse.json({ error: "server misconfigured" }, { status: 500 });
+  }
   const store = new PostgresOtpStore(hmacSecret);
   const result = await completeOtpVerification(store, {
     challengeId: body.challengeId,
